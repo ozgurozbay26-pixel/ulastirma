@@ -5,7 +5,7 @@ from datetime import date
 
 # --- BAĞLANTI ---
 URL = "https://rmzfbgaimyuacpovpxm.supabase.co"
-KEY = "sb_publishable_AIPebE5Fs4zSKM36R9VUMQ_yuS8Ih-h"
+KEY = "sb_publishable_AIpebE5Fs4zSKM36R9VUMQ_yuS8Ih-h"
 supabase: Client = create_client(URL, KEY)
 
 st.set_page_config(page_title="Sözcü Ulaştırma", layout="wide")
