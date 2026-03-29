@@ -3,61 +3,63 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 
-st.set_page_config(page_title="Ulaştırma Takip", layout="wide")
+st.set_page_config(page_title="Sözcü Takip Sistemi", layout="wide")
 
-# --- BURAYA KENDİ TABLO LİNKİNİ YAPIŞTIR ---
-# Linkin sonundaki /edit... kısmını silmene gerek yok, direkt yapıştır.
+# LÜTFEN: Kendi Google Sheets URL'ni buraya tırnak içine yapıştır
 URL = "BURAYA_GOOGLE_SHEETS_LINKINI_YAPISTIR"
 
-st.title("🚗 Sözcü Ulaştırma Takip")
+st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
 
 try:
-    # Bağlantıyı oluştur
     conn = st.connection("gsheets", type=GSheetsConnection)
 
-    # VERİ OKUMA
-    # ttl=0 ekliyoruz ki her zaman en güncel hali gelsin
+    # VERİ OKUMA (Hafızayı tazelemek için ttl=0)
     df = conn.read(spreadsheet=URL, ttl=0)
-    
-    # Eğer tablo tamamen boşsa başlıkları tanımla
+
+    # Tablo tamamen boşsa veya başlıklar yoksa hata vermemesi için:
     if df is None or df.empty:
         df = pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
+    else:
+        # Sütun isimlerini garantiye alalım (Küçük harf)
+        df.columns = [c.lower() for c in df.columns]
 
     # YAN PANEL FORM
-    st.sidebar.header("📝 Yeni Kayıt")
-    s_sofor = st.sidebar.selectbox("Şoför", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
-    s_plaka = st.sidebar.selectbox("Plaka", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
-    s_km = st.sidebar.text_input("KM")
-    s_gorev = st.sidebar.text_area("Görev")
+    st.sidebar.header("📝 Yeni Kayıt Girişi")
+    s_sofor = st.sidebar.selectbox("Şoför Seçin", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
+    s_plaka = st.sidebar.selectbox("Plaka Seçin", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
+    s_saat = st.sidebar.time_input("Saat", datetime.now().time())
+    s_km = st.sidebar.text_input("Araç KM")
+    s_gorev = st.sidebar.text_area("Görev Tanımı")
 
-    if st.sidebar.button("KAYDET"):
-        if s_sofor != "Seçiniz..." and s_gorev:
-            yeni = pd.DataFrame([{
+    if st.sidebar.button("KAYDEDİLSİN Mİ?", type="primary"):
+        if s_sofor != "Seçiniz..." and s_gorev.strip():
+            yeni_satir = pd.DataFrame([{
                 "tarih": datetime.now().strftime("%d.%m.%Y"),
-                "saat": datetime.now().strftime("%H:%M"),
+                "saat": s_saat.strftime("%H:%M"),
                 "sofor": s_sofor,
                 "plaka": s_plaka,
                 "km": s_km,
                 "gorev": s_gorev
             }])
             
-            # Veriyi birleştir ve gönder
-            guncel_df = pd.concat([df, yeni], ignore_index=True)
-            conn.update(spreadsheet=URL, data=guncel_df)
-            st.sidebar.success("Kayıt Başarılı!")
+            # Eski veriyle yeniyi birleştir
+            son_df = pd.concat([df, yeni_satir], ignore_index=True)
+            
+            # Google Sheets'e gönder
+            conn.update(spreadsheet=URL, data=son_df)
+            st.sidebar.success("✅ Excel'e Başarıyla Yazıldı!")
             st.rerun()
         else:
-            st.sidebar.warning("Lütfen şoför ve görev girin.")
+            st.sidebar.error("Lütfen şoför ve görev kısımlarını doldurun.")
 
-    # TABLOYU GÖSTER
-    st.subheader("📋 Hareket Listesi")
+    # ANA EKRAN TABLO
+    st.subheader("📋 Güncel Hareket Listesi")
     if not df.empty:
-        # Boş satırları temizleyip göster
         st.dataframe(df.dropna(how='all'), use_container_width=True, hide_index=True)
     else:
-        st.info("Henüz kayıt yok veya veriler okunuyor...")
+        st.info("Kayıtlar listeleniyor veya henüz veri girilmemiş...")
 
 except Exception as e:
-    st.error("🚨 SİSTEMDE BİR SORUN VAR!")
-    st.write(f"Hata detayı: {e}")
-    st.info("İpucu: Eğer '403' veya 'Permission' hatası varsa, Google Sheets paylaşım ayarını kontrol et.")
+    st.error("🚨 BAĞLANTI SORUNU!")
+    st.write(f"Hata Detayı: {e}")
+    st.info("EĞER BURADA 403 YAZIYORSA: Lütfen Google Sheets dosyasını 'ozgurozbay@banded-arch-465808-q9.iam.gserviceaccount.com' adresiyle 'Düzenleyen' olarak paylaş.")
