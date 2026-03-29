@@ -1,37 +1,53 @@
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
 from datetime import date
+# Google Sheets için gerekli kütüphane
+from streamlit_gsheets import GSheetsConnection
 
-# BİLGİLER
-URL = "https://rmzfbgaimyuacpovpxm.supabase.co"
-KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtemZiZ2FpYW15dWFjcG92cHhtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDc2MzMyNSwiZXhwIjoyMDkwMzM5MzI1fQ.uHZuagGk8UxZlzbweufE_z5VaMZH1AoHyFF7gmdAUY4"
+st.set_page_config(page_title="Sözcü Takip (GSheets)", layout="wide")
 
-st.set_page_config(page_title="Sözcü Takip Son Kontrol", layout="wide")
+# --- 1. BAĞLANTI ---
+# Google Sheets URL'ni buraya yapıştır
+GSHEET_URL = "https://docs.google.com/spreadsheets/d/1O4jyJR4cGARY4ScACpL1GDD2GhwZ9lSBUIaaSlI9TCA/edit?usp=sharing"
 
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# --- 2. SABİT LİSTELER (Veritabanı derdi yok!) ---
+soforler = ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"]
+plakalar = ["Seçiniz...", "34 ABC 123", "06 XYZ 789", "35 KML 456"]
+
+st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
+
+# --- 3. KAYIT FORMU ---
+st.sidebar.header("📝 Yeni Kayıt Girişi")
+s_sofor = st.sidebar.selectbox("Şoför", soforler)
+s_plaka = st.sidebar.selectbox("Plaka", plakalar)
+s_km = st.sidebar.text_input("Araç KM")
+s_gorev = st.sidebar.text_area("Görev Tanımı")
+
+if st.sidebar.button("VERİYİ EXCEL'E KAYDET"):
+    if s_sofor != "Seçiniz..." and s_gorev:
+        yeni_satir = pd.DataFrame([{
+            "tarih": date.today().strftime("%d.%m.%Y"),
+            "sofor": s_sofor,
+            "plaka": s_plaka,
+            "saat": "---",
+            "km": s_km,
+            "gorev": s_gorev
+        }])
+        
+        # Mevcut veriyi çek ve yeni satırı ekle
+        existing_data = conn.read(spreadsheet=GSHEET_URL)
+        updated_df = pd.concat([existing_data, yeni_satir], ignore_index=True)
+        conn.update(spreadsheet=GSHEET_URL, data=updated_df)
+        
+        st.sidebar.success("Kayıt Excel'e işlendi!")
+        st.rerun()
+
+# --- 4. VERİLERİ GÖSTER ---
+st.subheader("📋 Güncel Kayıtlar (Google Sheets'ten Canlı)")
 try:
-    # Boşlukları tamamen siliyoruz
-    supabase: Client = create_client(URL.strip(), KEY.strip())
-    
-    # ÇEKMEYİ DENE
-    st.title("🚗 Sistem Durum Raporu")
-    
-    res = supabase.table("kisiler").select("ad_soyad").execute()
-    
-    # EĞER BURAYA GELİRSE BAŞARILI OLMUŞTUR
-    st.success("✅ İNANILMAZ! BAĞLANTI SONUNDA KURULDU.")
-    soforler = ["Seçiniz..."] + [x['ad_soyad'] for x in res.data]
-    st.selectbox("Şoför Listesi Test", soforler)
-    
-except Exception as e:
-    st.error("❌ SUPABASE HALA REDDEDİYOR!")
-    st.warning(f"Gelen Hata Mesajı: {str(e)}")
-    
-    if "401" in str(e):
-        st.info("İpucu: 401 hatası 'Anahtar Yanlış' demektir. Lütfen Supabase'den anahtarı tekrar kopyalayın.")
-    elif "403" in str(e):
-        st.info("İpucu: 403 hatası 'Yetki Yok' demektir. RLS ayarlarını kontrol etmeliyiz.")
-    else:
-        st.info("Farklı bir hata oluştu, lütfen mesajı kontrol edin.")
-
-st.info(f"Koddaki Key Sonu: ...{KEY[-5:]}")
+    df = conn.read(spreadsheet=GSHEET_URL)
+    st.dataframe(df, use_container_width=True)
+except:
+    st.info("Henüz kayıt bulunamadı veya bağlantı bekleniyor.")
