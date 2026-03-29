@@ -6,7 +6,7 @@ from datetime import date
 # --- BAĞLANTI ---
 URL = "https://rmzfbgaimyuacpovpxm.supabase.co"
 # BURAYA SUPABASE'DEN ALDIĞIN eyJ... İLE BAŞLAYAN ÇOK UZUN ANON KEY'İ YAPIŞTIR
-KEY = "BURAYA_GERCEK_KEYINI_YAPISTIR" 
+KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtemZiZ2FpYW15dWFjcG92cHhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3NjMzMjUsImV4cCI6MjA5MDMzOTMyNX0.aZ4pt5km5Ben2YTqENKtrpKoIOTKLMJoGp6NsMtrdxQ" 
 
 try:
     supabase: Client = create_client(URL, KEY)
