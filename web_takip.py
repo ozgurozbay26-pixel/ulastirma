@@ -24,7 +24,7 @@ def login():
             
             # BURADAN ŞİFREYİ DEĞİŞTİREBİLİRSİN
             if st.button("Giriş Yap"):
-                if user == "yeliz" and password == "12345":
+                if user == "Yeliz" and password == "12345":
                     st.session_state.logged_in = True
                     st.rerun()
                 else:
