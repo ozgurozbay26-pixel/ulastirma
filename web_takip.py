@@ -1,79 +1,85 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
+import gspread
+from google.oauth2.service_account import Credentials
 from datetime import datetime
 
-st.set_page_config(page_title="Sözcü Takip", layout="wide")
+st.set_page_config(page_title="Sözcü Ulaştırma Takip", layout="wide")
 
-# --- LİNKİ BURAYA YAPIŞTIR ---
-URL = "BURAYA_GOOGLE_SHEETS_LINKINI_YAPISTIR"
+# --- 1. BAĞLANTI AYARLARI (SECRETS) ---
+try:
+    # Streamlit Secrets'taki JSON bilgilerini alıyoruz
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
+    # Secrets içindeki [connections.gsheets] altındaki bilgileri çekiyoruz
+    creds_info = {
+        "type": st.secrets["connections"]["gsheets"]["type"],
+        "project_id": st.secrets["connections"]["gsheets"]["project_id"],
+        "private_key_id": st.secrets["connections"]["gsheets"]["private_key_id"],
+        "private_key": st.secrets["connections"]["gsheets"]["private_key"],
+        "client_email": st.secrets["connections"]["gsheets"]["client_email"],
+        "client_id": st.secrets["connections"]["gsheets"]["client_id"],
+        "auth_uri": st.secrets["connections"]["gsheets"]["auth_uri"],
+        "token_uri": st.secrets["connections"]["gsheets"]["token_uri"],
+        "auth_provider_x509_cert_url": st.secrets["connections"]["gsheets"]["auth_provider_x509_cert_url"],
+        "client_x509_cert_url": st.secrets["connections"]["gsheets"]["client_x509_cert_url"]
+    }
+    
+    creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+    client = gspread.authorize(creds)
+    
+    # --- BURAYA KENDİ LİNKİNİ YAPIŞTIR ---
+    URL = "https://docs.google.com/spreadsheets/d/1O4jyJR4cGARY4ScACpL1GDD2GhwZ9lSBUIaaSlI9TCA/edit?usp=sharing"
+    sheet = client.open_by_url(URL).sheet1 # İlk sayfayı açar
 
-st.title("🚗 Sözcü Ulaştırma Takip")
+except Exception as e:
+    st.error(f"⚠️ Bağlantı Kurulamadı: {e}")
+    st.stop()
 
-# 1. BAĞLANTIYI KUR
-conn = st.connection("gsheets", type=GSheetsConnection)
+# --- 2. ARAYÜZ VE KAYIT ---
+st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
 
-# 2. VERİ OKUMA (Hata Ayıklayıcı ile)
-def verileri_yukle():
-    try:
-        df = conn.read(spreadsheet=URL, ttl=0)
-        if df is not None:
-            return df.dropna(how='all')
-        return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
-    except Exception as e:
-        # Eğer mesaj 200 ise bu bir BAŞARIDIR
-        if "200" in str(e):
-            return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
-        return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
-
-# FORM ALANI
 st.sidebar.header("📝 Yeni Kayıt")
-s_sofor = st.sidebar.selectbox("Şoför", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
-s_plaka = st.sidebar.selectbox("Plaka", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
-s_km = st.sidebar.text_input("Araç KM")
+soforler = ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"]
+plakalar = ["Seçiniz...", "34 ABC 123", "06 XYZ 789"]
+
+s_sofor = st.sidebar.selectbox("Şoför", soforler)
+s_plaka = st.sidebar.selectbox("Plaka", plakalar)
+s_km = st.sidebar.text_input("KM")
 s_gorev = st.sidebar.text_area("Görev Tanımı")
 
-if st.sidebar.button("KAYDET VE EXCEL'E GÖNDER", type="primary"):
+if st.sidebar.button("KAYDET", type="primary"):
     if s_sofor != "Seçiniz..." and s_gorev.strip():
-        yeni_kayit = pd.DataFrame([{
-            "tarih": datetime.now().strftime("%d.%m.%Y"),
-            "saat": datetime.now().strftime("%H:%M"),
-            "sofor": s_sofor,
-            "plaka": s_plaka,
-            "km": s_km,
-            "gorev": s_gorev
-        }])
-        
         try:
-            # Mevcut veriyi al ve üzerine ekle
-            df_mevcut = verileri_yukle()
-            son_df = pd.concat([df_mevcut, yeni_kayit], ignore_index=True)
-            
-            # Google Sheets'e gönder
-            conn.update(spreadsheet=URL, data=son_df)
-            
-            st.sidebar.success("✅ Kayıt Başarıyla Gönderildi!")
+            # Veriyi listeye çevirip en alta ekliyoruz
+            yeni_satir = [
+                datetime.now().strftime("%d.%m.%Y"),
+                datetime.now().strftime("%H:%M"),
+                s_sofor,
+                s_plaka,
+                s_km,
+                s_gorev
+            ]
+            sheet.append_row(yeni_satir)
+            st.sidebar.success("✅ Veritabanına Kaydedildi!")
             st.rerun()
-            
         except Exception as e:
-            # İŞTE BURASI KRİTİK: 200 geldiyse başarıyı kutla!
-            if "200" in str(e):
-                st.sidebar.success("✅ Kayıt Başarıyla Excel'e Yazıldı!")
-                st.balloons() # Başarıyı balonlarla kutla!
-                st.rerun()
-            else:
-                st.sidebar.error(f"Teknik bir sorun oldu: {e}")
+            st.sidebar.error(f"Kayıt hatası: {e}")
     else:
-        st.sidebar.error("Lütfen şoför ve görev girin!")
+        st.sidebar.warning("Lütfen alanları doldurun.")
 
-# ANA TABLO
-st.subheader("📋 Hareket Listesi")
-data = verileri_yukle()
+# --- 3. VERİLERİ GÖSTER ---
+st.subheader("📋 3 Yıllık Hareket Arşivi")
+try:
+    # Tüm verileri çekip tabloya basıyoruz
+    data = sheet.get_all_records()
+    if data:
+        df = pd.DataFrame(data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("Henüz arşivde kayıt bulunmuyor.")
+except Exception as e:
+    st.warning("Veriler şu an listelenemiyor.")
 
-if not data.empty:
-    st.dataframe(data, use_container_width=True, hide_index=True)
-else:
-    st.info("Kayıtlar listeleniyor veya henüz veri yok.")
-
-if st.button("🔄 Listeyi Tazele"):
+if st.button("🔄 Arşivi Yenile"):
     st.rerun()
