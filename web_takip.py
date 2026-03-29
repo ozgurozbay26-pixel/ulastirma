@@ -3,47 +3,42 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import date
 
-# --- 1. BAĞLANTI (LÜTFEN SERVICE_ROLE KEY'İ YAPIŞTIR) ---
+# --- BAĞLANTI (SENİN VERDİĞİN MASTER KEY) ---
 URL = "https://rmzfbgaimyuacpovpxm.supabase.co"
-# Buraya az önce aldığın 'service_role' anahtarını yapıştır
-KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtemZiZ2FpYW15dWFjcG92cHhtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDc2MzMyNSwiZXhwIjoyMDkwMzM5MzI1fQ.uHZuagGk8UxZlzbweufE_z5VaMZH1AoHyFF7gmdAUY4" 
+KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtemZiZ2FpYW15dWFjcG92cHhtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDc2MzMyNSwiZXhwIjoyMDkwMzM5MzI1fQ.uHZuagGk8UxZlzbweufE_z5VaMZH1AoHyFF7gmdAUY4"
 
-# Bağlantıyı kur (Hafızayı temizlemek için cache kullanmıyoruz)
+# Bağlantıyı en sade haliyle kur
 supabase: Client = create_client(URL, KEY)
 
-st.set_page_config(page_title="Sözcü Takip", layout="wide")
+st.set_page_config(page_title="Sözcü Takip Paneli", layout="wide")
 
-# --- 2. VERİ ÇEKME ---
-# Cache (hafıza) fonksiyonunu tamamen kaldırdık!
+# --- VERİ ÇEKME ---
 def verileri_yukle():
     try:
-        s = supabase.table("kisiler").select("*").execute()
-        p = supabase.table("plaka").select("*").execute()
-        k = supabase.table("kayitlar").select("*").order("id", desc=True).execute()
-        return s.data, p.data, k.data
+        # Tabloları çekiyoruz (Hafıza falan kullanmıyoruz direkt canlı çekim)
+        s_res = supabase.table("kisiler").select("*").execute()
+        p_res = supabase.table("plaka").select("*").execute()
+        k_res = supabase.table("kayitlar").select("*").order("id", desc=True).execute()
+        return s_res.data, p_res.data, k_res.data
     except Exception as e:
         st.error(f"⚠️ Bağlantı Hatası: {e}")
         return [], [], []
 
 s_data, p_data, k_data = verileri_yukle()
 
-# --- 3. LİSTELER ---
-soforler = ["Seçiniz..."] + [str(x['ad_soyad']) for x in s_data]
-plakalar = ["Seçiniz..."] + [str(x['plaka_no']) for x in p_data]
+# --- ARAYÜZ ---
+st.title("🚗 Sözcü Ulaştırma Takip Sistemi")
 
-# --- 4. ARAYÜZ ---
-st.title("🚗 Sözcü Ulaştırma Takip")
+# Sol Panel (Kayıt Formu)
+st.sidebar.header("📝 Yeni Hareket Kaydı")
+sofor_listesi = ["Seçiniz..."] + [str(x['ad_soyad']) for x in s_data]
+plaka_listesi = ["Seçiniz..."] + [str(x['plaka_no']) for x in p_data]
 
-if not s_data:
-    st.warning("Veritabanına ulaşıldı ama şoför listesi boş dönüyor. SQL ile eklediğinden emin ol!")
-
-# Sol Panel
-st.sidebar.header("📝 Yeni Kayıt")
-s_sofor = st.sidebar.selectbox("Şoför", soforler)
-s_plaka = st.sidebar.selectbox("Plaka", plakalar)
+s_sofor = st.sidebar.selectbox("Şoför Seçin", sofor_listesi)
+s_plaka = st.sidebar.selectbox("Plaka Seçin", plaka_listesi)
 s_saat = st.sidebar.time_input("Saat")
-s_km = st.sidebar.text_input("KM")
-s_gorev = st.sidebar.text_area("Görev")
+s_km = st.sidebar.text_input("Araç KM")
+s_gorev = st.sidebar.text_area("Görev Tanımı")
 
 if st.sidebar.button("KAYDET", type="primary", use_container_width=True):
     if s_sofor != "Seçiniz..." and s_gorev.strip():
@@ -53,12 +48,13 @@ if st.sidebar.button("KAYDET", type="primary", use_container_width=True):
             "saat": s_saat.strftime("%H:%M"), "km": s_km, "gorev": s_gorev
         }
         supabase.table("kayitlar").insert(yeni).execute()
-        st.sidebar.success("Kayıt Başarılı!")
+        st.sidebar.success("Kayıt Buluta Gönderildi!")
         st.rerun()
 
-# Ana Tablo
+# Ana Ekran Tablo
 if k_data:
-    st.dataframe(pd.DataFrame(k_data)[["tarih", "saat", "sofor", "plaka", "km", "gorev"]], 
+    df = pd.DataFrame(k_data)
+    st.dataframe(df[["tarih", "saat", "sofor", "plaka", "km", "gorev"]], 
                  use_container_width=True, hide_index=True)
 else:
-    st.info("Henüz kayıt bulunmuyor.")
+    st.info("Kayıtlar listelenemiyor veya henüz veri yok.")
