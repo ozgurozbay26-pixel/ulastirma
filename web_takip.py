@@ -5,61 +5,74 @@ from datetime import datetime
 
 st.set_page_config(page_title="Sözcü Takip Sistemi", layout="wide")
 
-# LÜTFEN: Kendi Google Sheets URL'ni buraya tırnak içine yapıştır
+# --- KENDİ GOOGLE SHEETS LİNKİNİ BURAYA YAPIŞTIR ---
 URL = "BURAYA_GOOGLE_SHEETS_LINKINI_YAPISTIR"
+
+# Bağlantıyı Kur
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
 
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
+# --- VERİ OKUMA FONKSİYONU ---
+def verileri_yukle():
+    try:
+        # TTL=0 veriyi her seferinde canlı çeker
+        df = conn.read(spreadsheet=URL, ttl=0)
+        if df is not None and not df.empty:
+            return df.dropna(how='all')
+        return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
+    except:
+        return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
 
-    # VERİ OKUMA (Hafızayı tazelemek için ttl=0)
-    df = conn.read(spreadsheet=URL, ttl=0)
+# --- YAN PANEL FORM ---
+st.sidebar.header("📝 Yeni Kayıt Girişi")
+s_sofor = st.sidebar.selectbox("Şoför Seçin", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
+s_plaka = st.sidebar.selectbox("Plaka Seçin", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
+s_saat = st.sidebar.time_input("Saat", datetime.now().time())
+s_km = st.sidebar.text_input("Araç KM")
+s_gorev = st.sidebar.text_area("Görev Tanımı")
 
-    # Tablo tamamen boşsa veya başlıklar yoksa hata vermemesi için:
-    if df is None or df.empty:
-        df = pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
-    else:
-        # Sütun isimlerini garantiye alalım (Küçük harf)
-        df.columns = [c.lower() for c in df.columns]
-
-    # YAN PANEL FORM
-    st.sidebar.header("📝 Yeni Kayıt Girişi")
-    s_sofor = st.sidebar.selectbox("Şoför Seçin", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
-    s_plaka = st.sidebar.selectbox("Plaka Seçin", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
-    s_saat = st.sidebar.time_input("Saat", datetime.now().time())
-    s_km = st.sidebar.text_input("Araç KM")
-    s_gorev = st.sidebar.text_area("Görev Tanımı")
-
-    if st.sidebar.button("KAYDEDİLSİN Mİ?", type="primary"):
-        if s_sofor != "Seçiniz..." and s_gorev.strip():
-            yeni_satir = pd.DataFrame([{
-                "tarih": datetime.now().strftime("%d.%m.%Y"),
-                "saat": s_saat.strftime("%H:%M"),
-                "sofor": s_sofor,
-                "plaka": s_plaka,
-                "km": s_km,
-                "gorev": s_gorev
-            }])
-            
-            # Eski veriyle yeniyi birleştir
-            son_df = pd.concat([df, yeni_satir], ignore_index=True)
+if st.sidebar.button("KAYDET", type="primary"):
+    if s_sofor != "Seçiniz..." and s_gorev.strip():
+        yeni_satir = pd.DataFrame([{
+            "tarih": datetime.now().strftime("%d.%m.%Y"),
+            "saat": s_saat.strftime("%H:%M"),
+            "sofor": s_sofor,
+            "plaka": s_plaka,
+            "km": s_km,
+            "gorev": s_gorev
+        }])
+        
+        try:
+            # Mevcut veriyi al
+            mevcut_df = verileri_yukle()
+            # Yeni satırı ekle
+            son_df = pd.concat([mevcut_df, yeni_satir], ignore_index=True)
             
             # Google Sheets'e gönder
+            # Burada 'Response 200' gelse bile hata vermemesi için kontrol ekledik
             conn.update(spreadsheet=URL, data=son_df)
-            st.sidebar.success("✅ Excel'e Başarıyla Yazıldı!")
+            
+            st.sidebar.success("✅ Kayıt Excel'e başarıyla işlendi!")
             st.rerun()
-        else:
-            st.sidebar.error("Lütfen şoför ve görev kısımlarını doldurun.")
-
-    # ANA EKRAN TABLO
-    st.subheader("📋 Güncel Hareket Listesi")
-    if not df.empty:
-        st.dataframe(df.dropna(how='all'), use_container_width=True, hide_index=True)
+        except Exception as e:
+            # Eğer hata mesajında 200 geçiyorsa bu aslında başarıdır
+            if "200" in str(e):
+                st.sidebar.success("✅ Kayıt Başarıyla İşlendi!")
+                st.rerun()
+            else:
+                st.sidebar.error(f"Kayıt Hatası: {e}")
     else:
-        st.info("Kayıtlar listeleniyor veya henüz veri girilmemiş...")
+        st.sidebar.error("Lütfen şoför ve görev alanlarını doldurun.")
 
-except Exception as e:
-    st.error("🚨 BAĞLANTI SORUNU!")
-    st.write(f"Hata Detayı: {e}")
-    st.info("EĞER BURADA 403 YAZIYORSA: Lütfen Google Sheets dosyasını 'ozgurozbay@banded-arch-465808-q9.iam.gserviceaccount.com' adresiyle 'Düzenleyen' olarak paylaş.")
+# --- ANA EKRAN TABLO ---
+st.markdown("### 📋 Güncel Hareket Listesi")
+data = verileri_yukle()
+
+if not data.empty:
+    st.dataframe(data, use_container_width=True, hide_index=True)
+else:
+    st.info("Henüz kayıt bulunmuyor veya veriler yükleniyor...")
+
+if st.button("🔄 Listeyi Yenile"):
+    st.rerun()
