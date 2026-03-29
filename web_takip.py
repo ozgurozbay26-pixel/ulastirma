@@ -14,17 +14,16 @@ def login():
         st.session_state.logged_in = False
 
     if not st.session_state.logged_in:
-        # Ekranın ortasına şık bir giriş kutusu
         col1, col2, col3 = st.columns([1,1,1])
         with col2:
-            st.image("https://www.sozcu.com.tr/static/img/sozcu-logo.png", width=200) # Opsiyonel Logo
+            st.image("https://www.sozcu.com.tr/static/img/sozcu-logo.png", width=200)
             st.title("Sistem Girişi")
             user = st.text_input("Kullanıcı Adı")
             password = st.text_input("Şifre", type="password")
             
-            # BURADAN ŞİFREYİ DEĞİŞTİREBİLİRSİN
             if st.button("Giriş Yap"):
-                if user == "Yeliz" and password == "12345":
+                # ŞİFRE: sozcu2024
+                if user == "ozgur" and password == "sozcu2024":
                     st.session_state.logged_in = True
                     st.rerun()
                 else:
@@ -66,19 +65,33 @@ if login():
         st.error("⚠️ Excel formatı hatalı! A1 hücresine 'id' başlığını ekleyin.")
         st.stop()
 
-    # --- 3. ÜST BİLGİ VE YÖNETİCİ İMZASI ---
-    col_logo, col_admin = st.columns([4, 1])
-    with col_logo:
-        st.title("🚗 Sözcü Ulaştırma Hareket Takip")
+    # --- 3. ÜST BİLGİ VE YÖNETİCİ İMZASI (Tek Çıkış) ---
+    col_title, col_admin = st.columns([3, 1])
+    
+    with col_title:
+        # --- LOGO SEÇİM ALANI ---
+        # SEÇENEK 1: Modern Kamyon İkonu (Emoji)
+        # logo_ikon = "🚛" 
+        
+        # SEÇENEK 2: Haritadaki Araç İkonu (Emoji)
+        # logo_ikon = "📍🚗"
+        
+        # ŞU ANKİ SEÇENEK: Senin istediğin araba logosu (Emoji)
+        logo_ikon = "🚗"
+        
+        st.title(f"{logo_ikon} Sözcü Ulaştırma Hareket Takip")
+
     with col_admin:
+        # Yönetici kutusu ve tek çıkış butonu
         st.markdown(f"""
-            <div style="background-color:#f0f2f6; padding:10px; border-radius:10px; border:1px solid #d1d5db; text-align:center;">
+            <div style="background-color:#f0f2f6; padding:15px; border-radius:10px; border:1px solid #d1d5db; text-align:center;">
                 <p style="margin:0; font-size:12px; color:#6b7280;">Sistem Yöneticisi</p>
-                <b style="font-size:16px; color:#1f2937;">Özgür Özbay</b><br>
-                <a href="/" style="text-decoration:none; font-size:10px; color:red;">Güvenli Çıkış</a>
+                <b style="font-size:16px; color:#1f2937;">Özgür Özbay</b>
             </div>
         """, unsafe_allow_html=True)
-        if st.button("Çıkış Yap"):
+        # Sadece bu buton kaldı, CSS ile kutunun hemen altına şıkça yerleşecek
+        st.write("") # Boşluk
+        if st.button("🚪 Güvenli Çıkış", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
 
@@ -93,7 +106,9 @@ if login():
         s_plaka = st.selectbox("Plaka", ["Seçiniz..."] + arac_listesi)
         s_km = st.text_input("KM")
         s_durum = st.selectbox("Durum", ["Seçiniz..."] + durum_listesi)
-        s_gorev = st.text_area("Görev")
+        # Yan panel form dışı kalmaması için düzeltme
+        # s_gorev = st.sidebar.text_area("Görev") # Yanlış
+        s_gorev = st.text_area("Görev") # Doğru
         submit = st.form_submit_button("KAYDET")
 
     if submit:
