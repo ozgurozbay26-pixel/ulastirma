@@ -5,73 +5,86 @@ from datetime import datetime
 
 st.set_page_config(page_title="Sözcü Takip Sistemi", layout="wide")
 
+# 1. HAFIZA KURULUMU (Ekranda tepki almanı sağlar)
+if 'gecici_liste' not in st.session_state:
+    st.session_state.gecici_liste = []
+
 # --- KENDİ GOOGLE SHEETS LİNKİNİ BURAYA YAPIŞTIR ---
 URL = "BURAYA_GOOGLE_SHEETS_LINKINI_YAPISTIR"
 
-# Bağlantıyı Kur
-conn = st.connection("gsheets", type=GSheetsConnection)
+st.title("🚗 Sözcü Ulaştırma Takip")
 
-st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
+# 2. BAĞLANTIYI DENE
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error(f"Bağlantı kurulamadı: {e}")
 
-# --- VERİ OKUMA (EN SAĞLAM YÖNTEM) ---
-def verileri_yukle():
-    try:
-        # TTL=0 ile en güncel veriyi zorla çekiyoruz
-        df = conn.read(spreadsheet=URL, ttl=0)
-        if df is not None:
-            return df.dropna(how='all')
-        return pd.DataFrame()
-    except:
-        return pd.DataFrame()
-
-# --- YAN PANEL FORM ---
+# YAN PANEL FORM
 st.sidebar.header("📝 Yeni Kayıt")
 s_sofor = st.sidebar.selectbox("Şoför", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
 s_plaka = st.sidebar.selectbox("Plaka", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
-s_km = st.sidebar.text_input("KM")
-s_gorev = st.sidebar.text_area("Görev")
+s_km = st.sidebar.text_input("Araç KM")
+s_gorev = st.sidebar.text_area("Görev Tanımı")
 
-if st.sidebar.button("KAYDET", type="primary"):
+# KAYDET BUTONU
+if st.sidebar.button("VERİYİ LİSTEYE EKLE VE KAYDET", type="primary"):
     if s_sofor != "Seçiniz..." and s_gorev.strip():
-        yeni_kayit = pd.DataFrame([{
+        # A. Önce ekranda göreceğimiz veriyi hazırlayalım
+        yeni_satir = {
             "tarih": datetime.now().strftime("%d.%m.%Y"),
             "saat": datetime.now().strftime("%H:%M"),
             "sofor": s_sofor,
             "plaka": s_plaka,
             "km": s_km,
             "gorev": s_gorev
-        }])
+        }
         
+        # B. TEPKİ VER: Hemen hafızaya ekle (Excel'e gitmese bile ekranda görürsün)
+        st.session_state.gecici_liste.append(yeni_satir)
+        st.sidebar.info("⏳ Ekrana eklendi, Excel'e gönderiliyor...")
+
+        # C. EXCEL'E GÖNDERMEYİ DENE
         try:
-            # Mevcut veriyi al ve birleştir
-            mevcut_df = verileri_yukle()
-            if mevcut_df.empty:
-                son_df = yeni_kayit
-            else:
-                son_df = pd.concat([mevcut_df, yeni_kayit], ignore_index=True)
+            # Mevcut veriyi çek
+            mevcut_df = conn.read(spreadsheet=URL, ttl=0)
+            yeni_df = pd.DataFrame([yeni_satir])
             
-            # Excel'e yaz
+            if mevcut_df is not None:
+                son_df = pd.concat([mevcut_df, yeni_df], ignore_index=True)
+            else:
+                son_df = yeni_df
+            
+            # Güncelle
             conn.update(spreadsheet=URL, data=son_df)
-            st.sidebar.success("Kayıt Excel'e Gönderildi!")
+            st.sidebar.success("✅ EXCEL'E YAZILDI!")
             st.rerun()
+            
         except Exception as e:
-            # İşte Python 3.14 inadını kıran yer burası:
-            if "200" in str(e) or "NoneType" in str(e):
-                st.sidebar.success("✅ Kayıt Başarıyla Tamamlandı!")
+            # Python 3.14 hatası olsa bile başarı say
+            if "200" in str(e):
+                st.sidebar.success("✅ BAŞARIYLA KAYDEDİLDİ (200)")
                 st.rerun()
             else:
-                st.sidebar.error(f"Hata: {e}")
+                st.sidebar.warning(f"Excel'e yazılamadı ama listede duruyor. Hata: {e}")
     else:
-        st.sidebar.warning("Lütfen boş alan bırakmayın.")
+        st.sidebar.error("Lütfen alanları doldurun!")
 
-# --- ANA EKRAN TABLO ---
-st.subheader("📋 Hareket Listesi")
-data = verileri_yukle()
+# ANA EKRAN: TABLOYU GÖSTER
+st.subheader("📋 Güncel Liste")
 
-if not data.empty:
-    st.dataframe(data, use_container_width=True, hide_index=True)
-else:
-    st.info("Kayıtlar yükleniyor veya henüz veri yok. Sayfayı yenileyebilirsiniz.")
+# Veriyi oku (Eğer Excel bozuksa hafızadakini göster)
+try:
+    bulut_verisi = conn.read(spreadsheet=URL, ttl=0)
+    if bulut_verisi is not None and not bulut_verisi.empty:
+        st.dataframe(bulut_verisi, use_container_width=True, hide_index=True)
+    else:
+        st.write("Excel'de henüz veri yok.")
+except:
+    # Excel okuyamazsa bile Session State'deki veriyi göster (Tepki vermeme sorununu çözer)
+    if st.session_state.gecici_liste:
+        st.table(pd.DataFrame(st.session_state.gecici_liste))
+        st.warning("⚠️ Şu an sadece ekrandaki verileri görüyorsunuz, Excel bağlantısı kurulamadı.")
 
-if st.button("🔄 Verileri Tazele"):
+if st.button("🔄 Sayfayı Zorla Yenile"):
     st.rerun()
