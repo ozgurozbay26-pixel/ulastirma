@@ -24,13 +24,18 @@ def durum_degistir(arac_id):
 def listeleri_getir():
     soforler, plakalar = ["Seçiniz..."], ["Seçiniz..."]
     try:
-        # Supabase'den şoför ve plaka listelerini alıyoruz
+        # kisiler tablosundan veriyi çek
         s_res = supabase.table("kisiler").select("ad_soyad").execute()
-        soforler += [x['ad_soyad'] for x in s_res.data]
+        if s_res.data:
+            soforler += [x['ad_soyad'] for x in s_res.data]
+        
+        # plaka tablosundan veriyi çek
         p_res = supabase.table("plaka").select("plaka_no").execute()
-        plakalar += [x['plaka_no'] for x in p_res.data]
-    except:
-        pass
+        if p_res.data:
+            plakalar += [x['plaka_no'] for x in p_res.data]
+    except Exception as e:
+        # Eğer bir hata varsa ekranın altında kırmızıyla yazar, sorunu anlarız
+        st.error(f"Veri çekme hatası: {e}")
     return soforler, plakalar
 
 def son_gorev_bilgisi(p_no):
