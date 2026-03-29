@@ -26,8 +26,8 @@ def login():
             password = st.text_input("Şifre", type="password")
             
             if st.button("Giriş Yap", use_container_width=True):
-                # Kullanıcı: yeliz | Şifre: 12345
-                if user == "ozgur" and password == "sozcu2024":
+                # Kullanıcı: ozgur | Şifre: sozcu2024
+                if user == "Yeliz" and password == "12345":
                     st.session_state.logged_in = True
                     st.rerun()
                 else:
