@@ -5,65 +5,75 @@ from datetime import datetime
 
 st.set_page_config(page_title="Sözcü Takip", layout="wide")
 
-# --- LİNKİ KONTROL ET ---
+# --- LİNKİ BURAYA YAPIŞTIR ---
 URL = "BURAYA_GOOGLE_SHEETS_LINKINI_YAPISTIR"
 
 st.title("🚗 Sözcü Ulaştırma Takip")
 
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
+# 1. BAĞLANTIYI KUR
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-    # 1. VERİ OKUMA TESTİ
-    st.write("🔍 Veri yolu kontrol ediliyor...")
-    
-    # TTL=0 ile hafızayı baypas ediyoruz
-    df = conn.read(spreadsheet=URL, ttl=0)
+# 2. VERİ OKUMA (Hata Ayıklayıcı ile)
+def verileri_yukle():
+    try:
+        df = conn.read(spreadsheet=URL, ttl=0)
+        if df is not None:
+            return df.dropna(how='all')
+        return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
+    except Exception as e:
+        # Eğer mesaj 200 ise bu bir BAŞARIDIR
+        if "200" in str(e):
+            return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
+        return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
 
-    # YAN PANEL
-    st.sidebar.header("📝 Yeni Kayıt")
-    s_sofor = st.sidebar.selectbox("Şoför", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
-    s_plaka = st.sidebar.selectbox("Plaka", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
-    s_km = st.sidebar.text_input("KM")
-    s_gorev = st.sidebar.text_area("Görev")
+# FORM ALANI
+st.sidebar.header("📝 Yeni Kayıt")
+s_sofor = st.sidebar.selectbox("Şoför", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
+s_plaka = st.sidebar.selectbox("Plaka", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
+s_km = st.sidebar.text_input("Araç KM")
+s_gorev = st.sidebar.text_area("Görev Tanımı")
 
-    if st.sidebar.button("KAYDET"):
-        if s_sofor != "Seçiniz..." and s_gorev:
-            yeni = pd.DataFrame([{
-                "tarih": datetime.now().strftime("%d.%m.%Y"),
-                "saat": datetime.now().strftime("%H:%M"),
-                "sofor": s_sofor,
-                "plaka": s_plaka,
-                "km": s_km,
-                "gorev": s_gorev
-            }])
+if st.sidebar.button("KAYDET VE EXCEL'E GÖNDER", type="primary"):
+    if s_sofor != "Seçiniz..." and s_gorev.strip():
+        yeni_kayit = pd.DataFrame([{
+            "tarih": datetime.now().strftime("%d.%m.%Y"),
+            "saat": datetime.now().strftime("%H:%M"),
+            "sofor": s_sofor,
+            "plaka": s_plaka,
+            "km": s_km,
+            "gorev": s_gorev
+        }])
+        
+        try:
+            # Mevcut veriyi al ve üzerine ekle
+            df_mevcut = verileri_yukle()
+            son_df = pd.concat([df_mevcut, yeni_kayit], ignore_index=True)
             
-            # Veriyi gönder
-            try:
-                # Eğer mevcut veri boşsa sadece yeniyi gönder
-                if df is None or df.empty:
-                    conn.update(spreadsheet=URL, data=yeni)
-                else:
-                    son_df = pd.concat([df, yeni], ignore_index=True)
-                    conn.update(spreadsheet=URL, data=son_df)
-                
-                st.sidebar.success("Kayıt Gönderildi!")
+            # Google Sheets'e gönder
+            conn.update(spreadsheet=URL, data=son_df)
+            
+            st.sidebar.success("✅ Kayıt Başarıyla Gönderildi!")
+            st.rerun()
+            
+        except Exception as e:
+            # İŞTE BURASI KRİTİK: 200 geldiyse başarıyı kutla!
+            if "200" in str(e):
+                st.sidebar.success("✅ Kayıt Başarıyla Excel'e Yazıldı!")
+                st.balloons() # Başarıyı balonlarla kutla!
                 st.rerun()
-            except Exception as e:
-                if "200" in str(e):
-                    st.sidebar.success("✅ Başarılı (200)")
-                    st.rerun()
-                else:
-                    st.sidebar.error(f"Yazma Hatası: {e}")
-
-    # 2. VERİYİ GÖSTERME (ZORLAYICI MOD)
-    st.subheader("📋 Hareket Listesi")
-    
-    if df is not None and not df.empty:
-        st.dataframe(df.dropna(how='all'), use_container_width=True)
+            else:
+                st.sidebar.error(f"Teknik bir sorun oldu: {e}")
     else:
-        st.warning("⚠️ Excel'e ulaşıldı ama tablo boş görünüyor.")
-        st.info("İpucu: Excel dosyasının ilk satırında 'tarih, saat, sofor, plaka, km, gorev' yazdığından emin olun.")
+        st.sidebar.error("Lütfen şoför ve görev girin!")
 
-except Exception as e:
-    st.error("🚨 KRİTİK BAĞLANTI HATASI")
-    st.write(f"Hata Kodu: {e}")
+# ANA TABLO
+st.subheader("📋 Hareket Listesi")
+data = verileri_yukle()
+
+if not data.empty:
+    st.dataframe(data, use_container_width=True, hide_index=True)
+else:
+    st.info("Kayıtlar listeleniyor veya henüz veri yok.")
+
+if st.button("🔄 Listeyi Tazele"):
+    st.rerun()
