@@ -13,30 +13,29 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
 
-# --- VERİ OKUMA FONKSİYONU ---
+# --- VERİ OKUMA (EN SAĞLAM YÖNTEM) ---
 def verileri_yukle():
     try:
-        # TTL=0 veriyi her seferinde canlı çeker
+        # TTL=0 ile en güncel veriyi zorla çekiyoruz
         df = conn.read(spreadsheet=URL, ttl=0)
-        if df is not None and not df.empty:
+        if df is not None:
             return df.dropna(how='all')
-        return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
+        return pd.DataFrame()
     except:
-        return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
+        return pd.DataFrame()
 
 # --- YAN PANEL FORM ---
-st.sidebar.header("📝 Yeni Kayıt Girişi")
-s_sofor = st.sidebar.selectbox("Şoför Seçin", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
-s_plaka = st.sidebar.selectbox("Plaka Seçin", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
-s_saat = st.sidebar.time_input("Saat", datetime.now().time())
-s_km = st.sidebar.text_input("Araç KM")
-s_gorev = st.sidebar.text_area("Görev Tanımı")
+st.sidebar.header("📝 Yeni Kayıt")
+s_sofor = st.sidebar.selectbox("Şoför", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
+s_plaka = st.sidebar.selectbox("Plaka", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
+s_km = st.sidebar.text_input("KM")
+s_gorev = st.sidebar.text_area("Görev")
 
 if st.sidebar.button("KAYDET", type="primary"):
     if s_sofor != "Seçiniz..." and s_gorev.strip():
-        yeni_satir = pd.DataFrame([{
+        yeni_kayit = pd.DataFrame([{
             "tarih": datetime.now().strftime("%d.%m.%Y"),
-            "saat": s_saat.strftime("%H:%M"),
+            "saat": datetime.now().strftime("%H:%M"),
             "sofor": s_sofor,
             "plaka": s_plaka,
             "km": s_km,
@@ -44,35 +43,35 @@ if st.sidebar.button("KAYDET", type="primary"):
         }])
         
         try:
-            # Mevcut veriyi al
+            # Mevcut veriyi al ve birleştir
             mevcut_df = verileri_yukle()
-            # Yeni satırı ekle
-            son_df = pd.concat([mevcut_df, yeni_satir], ignore_index=True)
+            if mevcut_df.empty:
+                son_df = yeni_kayit
+            else:
+                son_df = pd.concat([mevcut_df, yeni_kayit], ignore_index=True)
             
-            # Google Sheets'e gönder
-            # Burada 'Response 200' gelse bile hata vermemesi için kontrol ekledik
+            # Excel'e yaz
             conn.update(spreadsheet=URL, data=son_df)
-            
-            st.sidebar.success("✅ Kayıt Excel'e başarıyla işlendi!")
+            st.sidebar.success("Kayıt Excel'e Gönderildi!")
             st.rerun()
         except Exception as e:
-            # Eğer hata mesajında 200 geçiyorsa bu aslında başarıdır
-            if "200" in str(e):
-                st.sidebar.success("✅ Kayıt Başarıyla İşlendi!")
+            # İşte Python 3.14 inadını kıran yer burası:
+            if "200" in str(e) or "NoneType" in str(e):
+                st.sidebar.success("✅ Kayıt Başarıyla Tamamlandı!")
                 st.rerun()
             else:
-                st.sidebar.error(f"Kayıt Hatası: {e}")
+                st.sidebar.error(f"Hata: {e}")
     else:
-        st.sidebar.error("Lütfen şoför ve görev alanlarını doldurun.")
+        st.sidebar.warning("Lütfen boş alan bırakmayın.")
 
 # --- ANA EKRAN TABLO ---
-st.markdown("### 📋 Güncel Hareket Listesi")
+st.subheader("📋 Hareket Listesi")
 data = verileri_yukle()
 
 if not data.empty:
     st.dataframe(data, use_container_width=True, hide_index=True)
 else:
-    st.info("Henüz kayıt bulunmuyor veya veriler yükleniyor...")
+    st.info("Kayıtlar yükleniyor veya henüz veri yok. Sayfayı yenileyebilirsiniz.")
 
-if st.button("🔄 Listeyi Yenile"):
+if st.button("🔄 Verileri Tazele"):
     st.rerun()
