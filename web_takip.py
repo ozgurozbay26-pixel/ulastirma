@@ -23,7 +23,7 @@ def login():
             
             if st.button("Giriş Yap"):
                 # ŞİFRE: sozcu2024
-                if user == "ozgur" and password == "sozcu2024":
+                if user == "Yeliz" and password == "12345":
                     st.session_state.logged_in = True
                     st.rerun()
                 else:
