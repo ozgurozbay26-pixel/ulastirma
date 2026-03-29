@@ -3,81 +3,62 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import date
 
-# --- 1. BAĞLANTI AYARLARI ---
-URL = "https://rmzfbgaimyuacpovpxm.supabase.co"
-KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtemZiZ2FpYW15dWFjcG92cHhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3NjMzMjUsImV4cCI6MjA5MDMzOTMyNX0.aZ4pt5km5Ben2YTqENKtrpKoIOTKLMJoGp6NsMtrdxQ"
+# --- BAĞLANTI AYARLARI ---
+# LÜTFEN: Bu iki bilgiyi Supabase'den taze kopyalayıp buraya tırnak içine yapıştır
+URL = "https://rmzfbgaimyuacpovpxm.supabase.co".strip()
+KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtemZiZ2FpYW15dWFjcG92cHhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3NjMzMjUsImV4cCI6MjA5MDMzOTMyNX0.aZ4pt5km5Ben2YTqENKtrpKoIOTKLMJoGp6NsMtrdxQ".strip()
 
-# Bağlantıyı kur
-supabase: Client = create_client(URL, KEY)
+# Bağlantıyı oluştur (En sağlam yöntemle)
+try:
+    supabase: Client = create_client(URL, KEY)
+except Exception as e:
+    st.error(f"Bağlantı Kurulamadı: {e}")
 
-st.set_page_config(page_title="Sözcü Ulaştırma Takip", layout="wide", page_icon="🚗")
+st.set_page_config(page_title="Sözcü Takip Paneli", layout="wide")
 
-# --- 2. VERİ ÇEKME FONKSİYONU ---
+# --- VERİ ÇEKME ---
 def verileri_yukle():
     try:
-        # Şoförleri, Plakaları ve Kayıtları çek
-        s_res = supabase.table("kisiler").select("ad_soyad").execute()
-        p_res = supabase.table("plaka").select("plaka_no").execute()
-        k_res = supabase.table("kayitlar").select("*").order("id", desc=True).execute()
+        # Tablolara erişmeyi dene
+        s_res = supabase.from_("kisiler").select("ad_soyad").execute()
+        p_res = supabase.from_("plaka").select("plaka_no").execute()
+        k_res = supabase.from_("kayitlar").select("*").order("id", desc=True).execute()
         return s_res.data, p_res.data, k_res.data
     except Exception as e:
+        # Eğer hala hata varsa buraya net olarak yazacak
+        st.error(f"⚠️ VERİ ÇEKİLEMEDİ: {e}")
         return [], [], []
 
 s_data, p_data, k_data = verileri_yukle()
 
-# --- 3. YAN PANEL (KAYIT FORMU) ---
-st.sidebar.markdown("### 📝 Yeni Görev Kaydı")
+# --- FORM VE LİSTELER ---
 sofor_listesi = ["Seçiniz..."] + [str(x['ad_soyad']) for x in s_data]
 plaka_listesi = ["Seçiniz..."] + [str(x['plaka_no']) for x in p_data]
 
+st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
+
+# Sol Panel Kayıt Formu
+st.sidebar.header("📝 Yeni Kayıt")
 s_sofor = st.sidebar.selectbox("Şoför Seçin", sofor_listesi)
 s_plaka = st.sidebar.selectbox("Plaka Seçin", plaka_listesi)
 s_saat = st.sidebar.time_input("Saat")
-s_km = st.sidebar.text_input("Araç KM", placeholder="Örn: 145200")
-s_gorev = st.sidebar.text_area("Görev Tanımı", placeholder="Gidilecek yer...")
+s_km = st.sidebar.text_input("Araç KM")
+s_gorev = st.sidebar.text_area("Görev Tanımı")
 
-if st.sidebar.button("KAYDET VE LİSTEYE EKLE", type="primary", use_container_width=True):
+if st.sidebar.button("KAYDET"):
     if s_sofor != "Seçiniz..." and s_gorev.strip():
-        yeni_kayit = {
+        yeni = {
             "tarih": date.today().strftime("%d.%m.%Y"),
-            "sofor": s_sofor,
-            "plaka": s_plaka,
-            "saat": s_saat.strftime("%H:%M"),
-            "km": s_km,
-            "gorev": s_gorev
+            "sofor": s_sofor, "plaka": s_plaka,
+            "saat": s_saat.strftime("%H:%M"), "km": s_km, "gorev": s_gorev
         }
-        supabase.table("kayitlar").insert(yeni_kayit).execute()
-        st.sidebar.success("Kayıt başarıyla eklendi!")
+        supabase.table("kayitlar").insert(yeni).execute()
+        st.sidebar.success("Kayıt Başarıyla Gönderildi!")
         st.rerun()
-    else:
-        st.sidebar.error("Lütfen şoför seçin ve görev yazın!")
 
-# --- 4. ANA EKRAN (TABLO VE DURUM) ---
-st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
-
-# Özet Bilgiler
-c1, c2 = st.columns(2)
-c1.metric("Toplam Hareket", len(k_data))
-c2.metric("Sistemdeki Şoför", len(s_data))
-
-st.markdown("---")
-st.subheader("📋 Güncel Hareket Listesi")
-
+# Ana Ekran Tablo
 if k_data:
     df = pd.DataFrame(k_data)
-    # Tabloyu düzenli sütunlarla göster
-    st.dataframe(df[["tarih", "saat", "sofor", "plaka", "km", "gorev"]], 
-                 use_container_width=True, hide_index=True)
+    st.dataframe(df[["tarih", "saat", "sofor", "plaka", "km", "gorev"]], use_container_width=True, hide_index=True)
 else:
-    st.info("Şu an görüntülenecek bir kayıt bulunmuyor.")
-
-# --- 5. ARAÇ DURUM PANELİ ---
-st.divider()
-st.subheader("🚙 Araç Filosu")
-cols = st.columns(4)
-p_temiz = plaka_listesi[1:] # "Seçiniz"i atla
-
-for i in range(1, 9):
-    with cols[(i-1)%4]:
-        p_ismi = p_temiz[i-1] if (i-1) < len(p_temiz) else f"Araç {i}"
-        st.button(f"{p_ismi}\n🟢 Müsait", key=f"arac_{i}", use_container_width=True)
+    st.info("Henüz görüntülenecek kayıt bulunmuyor.")
