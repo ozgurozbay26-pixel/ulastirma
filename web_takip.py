@@ -5,7 +5,10 @@ from datetime import date
 
 st.set_page_config(page_title="Sözcü Ulaştırma Takip", layout="wide")
 
-# Google Sheets Bağlantısı (Secrets'tan otomatik okur)
+# --- KRİTİK ADIM: Google Sheets Linkini Buraya Yapıştır ---
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1O4jyJR4cGARY4ScACpL1GDD2GhwZ9lSBUIaaSlI9TCA/edit?usp=sharing"
+
+# Bağlantı Kur
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 st.title("🚗 Sözcü Ulaştırma Görev Takip")
@@ -30,18 +33,22 @@ if st.sidebar.button("KAYDET"):
             "gorev": s_gorev
         }])
         
-        # Mevcut veriyi çek ve üstüne ekle
-        df = conn.read()
-        updated_df = pd.concat([df, yeni_satir], ignore_index=True)
-        
-        # Google Sheets'e gönder
-        conn.update(data=updated_df)
+        # Mevcut veriyi bu URL üzerinden çek
+        try:
+            df = conn.read(spreadsheet=SPREADSHEET_URL)
+            updated_df = pd.concat([df, yeni_satir], ignore_index=True)
+            # URL üzerinden güncelle
+            conn.update(spreadsheet=SPREADSHEET_URL, data=updated_df)
+        except:
+            # Tablo boşsa sıfırdan oluştur
+            conn.update(spreadsheet=SPREADSHEET_URL, data=yeni_satir)
+            
         st.sidebar.success("Excel'e başarıyla kaydedildi!")
         st.rerun()
 
 # Listeyi Göster
 try:
-    data = conn.read()
+    data = conn.read(spreadsheet=SPREADSHEET_URL)
     st.subheader("📋 Güncel Hareket Listesi")
     st.dataframe(data, use_container_width=True, hide_index=True)
 except:
