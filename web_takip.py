@@ -4,7 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, time
 
-st.set_page_config(page_title="Sözcü Takip Paneli", layout="wide")
+st.set_page_config(page_title="Sözcü Takip Sistemi", layout="wide")
 
 # --- 1. BAĞLANTI AYARLARI ---
 @st.cache_resource
@@ -24,27 +24,46 @@ def gsheet_baglan():
     }
     creds = Credentials.from_service_account_info(creds_info, scopes=scope)
     client = gspread.authorize(creds)
-    # Senin paylaştığın link
+    # Senin Excel Linkin
     url = "https://docs.google.com/spreadsheets/d/1O4jyJR4cGARY4ScACpL1GDD2GhwZ9lSBUIaaSlI9TCA/edit?usp=sharing"
-    return client.open_by_url(url).sheet1
+    return client.open_by_url(url)
 
 try:
-    sheet = gsheet_baglan()
+    doc = gsheet_baglan()
+    sheet_kayitlar = doc.get_worksheet(0) # Ana kayıt sayfası
+    
+    # ŞOFÖRLERİ EXCEL'DEN ÇEK
+    try:
+        sheet_sofor = doc.worksheet("soforler")
+        sofor_listesi = sorted(sheet_sofor.col_values(1)[1:]) # Başlık hariç al ve alfabetik sırala
+    except:
+        sofor_listesi = ["Sayfa Bulunamadı!"]
+
+    # ARAÇLARI EXCEL'DEN ÇEK
+    try:
+        sheet_arac = doc.worksheet("araclar")
+        arac_listesi = sorted(sheet_arac.col_values(1)[1:]) # Başlık hariç al ve alfabetik sırala
+    except:
+        arac_listesi = ["Sayfa Bulunamadı!"]
+
 except Exception as e:
     st.error(f"Bağlantı Hatası: {e}")
     st.stop()
 
-# --- 2. VERİ GİRİŞ ALANI (SOL PANEL) ---
-st.sidebar.header("📝 Yeni Kayıt Ekle")
+# --- 2. YAN PANEL (YENİ KAYIT) ---
+st.sidebar.header("📝 Yeni Hareket Girişi")
 s_tarih = st.sidebar.date_input("Tarih", datetime.now())
-s_saat = st.sidebar.time_input("Saat Seçimi", time(12, 0)) # İSTEDİĞİN SAAT SEÇİMİ
-s_sofor = st.sidebar.selectbox("Şoför", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
-s_plaka = st.sidebar.selectbox("Plaka", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
+s_saat = st.sidebar.time_input("Saat Seçimi", time(12, 0))
+
+# LİSTELER ARTIK EXCEL'DEN GELİYOR
+s_sofor = st.sidebar.selectbox("Şoför Seçin", ["Seçiniz..."] + sofor_listesi)
+s_plaka = st.sidebar.selectbox("Plaka Seçin", ["Seçiniz..."] + arac_listesi)
+
 s_km = st.sidebar.text_input("Araç KM")
 s_gorev = st.sidebar.text_area("Görev Tanımı")
 
 if st.sidebar.button("VERİTABANINA KAYDET", type="primary"):
-    if s_sofor != "Seçiniz..." and s_gorev.strip():
+    if s_sofor != "Seçiniz..." and s_plaka != "Seçiniz..." and s_gorev.strip():
         yeni_satir = [
             s_tarih.strftime("%d.%m.%Y"),
             s_saat.strftime("%H:%M"),
@@ -53,56 +72,39 @@ if st.sidebar.button("VERİTABANINA KAYDET", type="primary"):
             s_km,
             s_gorev
         ]
-        sheet.append_row(yeni_satir)
+        sheet_kayitlar.append_row(yeni_satir)
         st.sidebar.success("✅ Kayıt Arşive Eklendi!")
-        st.cache_data.clear() # Filtreleme için veriyi tazele
+        st.cache_data.clear()
         st.rerun()
     else:
-        st.sidebar.error("Lütfen Şoför ve Görev alanlarını doldurun.")
+        st.sidebar.error("Lütfen tüm alanları doldurun.")
 
-# --- 3. FİLTRELEME VE TABLO ALANI ---
+# --- 3. ANA EKRAN (ARŞİV VE FİLTRE) ---
 st.title("🚗 Sözcü Ulaştırma Hareket Arşivi")
 
-# Veriyi Excel'den Çek
 try:
-    rows = sheet.get_all_records()
-    df = pd.DataFrame(rows)
+    data = sheet_kayitlar.get_all_records()
+    df = pd.DataFrame(data)
 except:
     df = pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
 
 if not df.empty:
-    st.markdown("### 🔍 Arşivde Filtreleme Yap")
-    
-    # Filtreleme Seçenekleri (Yan yana 3 sütun)
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        f_sofor = st.multiselect("Şoför Filtresi", options=df["sofor"].unique())
-    with col2:
-        f_plaka = st.multiselect("Plaka Filtresi", options=df["plaka"].unique())
-    with col3:
-        f_tarih = st.multiselect("Tarih Filtresi", options=df["tarih"].unique())
+    st.markdown("### 🔍 Detaylı Sorgulama")
+    c1, c2, c3 = st.columns(3)
+    with c1: f_sofor = st.multiselect("Şoföre Göre", options=df["sofor"].unique())
+    with c2: f_plaka = st.multiselect("Plakaya Göre", options=df["plaka"].unique())
+    with c3: f_tarih = st.multiselect("Tarihe Göre", options=df["tarih"].unique())
 
-    # Filtreleri Uygula
-    filtered_df = df.copy()
-    if f_sofor:
-        filtered_df = filtered_df[filtered_df["sofor"].isin(f_sofor)]
-    if f_plaka:
-        filtered_df = filtered_df[filtered_df["plaka"].isin(f_plaka)]
-    if f_tarih:
-        filtered_df = filtered_df[filtered_df["tarih"].isin(f_tarih)]
+    f_df = df.copy()
+    if f_sofor: f_df = f_df[f_df["sofor"].isin(f_sofor)]
+    if f_plaka: f_df = f_df[f_df["plaka"].isin(f_plaka)]
+    if f_tarih: f_df = f_df[f_df["tarih"].isin(f_tarih)]
 
-    # Tabloyu Göster
-    st.write(f"📊 Toplam {len(filtered_df)} kayıt listeleniyor.")
-    st.dataframe(filtered_df, use_container_width=True, hide_index=True)
-
-    # Excel İndirme Butonu (Her ihtimale karşı)
-    csv = filtered_df.to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 Seçili Kayıtları İndir (CSV)", data=csv, file_name="sozcu_arsiv.csv", mime="text/csv")
-
+    st.write(f"📊 Toplam {len(f_df)} kayıt bulundu.")
+    st.dataframe(f_df, use_container_width=True, hide_index=True)
 else:
-    st.info("Henüz veritabanında kayıtlı veri bulunmuyor.")
+    st.info("Sistem hazır, kayıt yapıldığında burada listelenecek.")
 
-if st.button("🔄 Verileri Yenile"):
+if st.button("🔄 Verileri ve Listeleri Yenile"):
     st.cache_data.clear()
     st.rerun()
