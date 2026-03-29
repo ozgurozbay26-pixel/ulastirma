@@ -21,7 +21,7 @@ def login():
         with col2:
             # Giriş ekranında logonuz
             st.image(LOGO_URL, width=150)
-            st.title("Sistem Girişi")
+            st.title("Sözcü Tv Ulaştırma Bilgi Paneli")
             user = st.text_input("Kullanıcı Adı")
             password = st.text_input("Şifre", type="password")
             
