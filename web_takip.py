@@ -1,53 +1,48 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
-# Google Sheets için gerekli kütüphane
 from streamlit_gsheets import GSheetsConnection
+from datetime import date
 
-st.set_page_config(page_title="Sözcü Takip (GSheets)", layout="wide")
+st.set_page_config(page_title="Sözcü Ulaştırma Takip", layout="wide")
 
-# --- 1. BAĞLANTI ---
-# Google Sheets URL'ni buraya yapıştır
-GSHEET_URL = "https://docs.google.com/spreadsheets/d/1O4jyJR4cGARY4ScACpL1GDD2GhwZ9lSBUIaaSlI9TCA/edit?usp=sharing"
-
+# Google Sheets Bağlantısı (Secrets'tan otomatik okur)
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 2. SABİT LİSTELER (Veritabanı derdi yok!) ---
+st.title("🚗 Sözcü Ulaştırma Görev Takip")
+
+# Yan Panel Form
+st.sidebar.header("📝 Yeni Kayıt")
 soforler = ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"]
-plakalar = ["Seçiniz...", "34 ABC 123", "06 XYZ 789", "35 KML 456"]
+plakalar = ["Seçiniz...", "34 ABC 123", "06 XYZ 789"]
 
-st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
-
-# --- 3. KAYIT FORMU ---
-st.sidebar.header("📝 Yeni Kayıt Girişi")
 s_sofor = st.sidebar.selectbox("Şoför", soforler)
 s_plaka = st.sidebar.selectbox("Plaka", plakalar)
-s_km = st.sidebar.text_input("Araç KM")
-s_gorev = st.sidebar.text_area("Görev Tanımı")
+s_km = st.sidebar.text_input("KM")
+s_gorev = st.sidebar.text_area("Görev")
 
-if st.sidebar.button("VERİYİ EXCEL'E KAYDET"):
+if st.sidebar.button("KAYDET"):
     if s_sofor != "Seçiniz..." and s_gorev:
         yeni_satir = pd.DataFrame([{
             "tarih": date.today().strftime("%d.%m.%Y"),
             "sofor": s_sofor,
             "plaka": s_plaka,
-            "saat": "---",
             "km": s_km,
             "gorev": s_gorev
         }])
         
-        # Mevcut veriyi çek ve yeni satırı ekle
-        existing_data = conn.read(spreadsheet=GSHEET_URL)
-        updated_df = pd.concat([existing_data, yeni_satir], ignore_index=True)
-        conn.update(spreadsheet=GSHEET_URL, data=updated_df)
+        # Mevcut veriyi çek ve üstüne ekle
+        df = conn.read()
+        updated_df = pd.concat([df, yeni_satir], ignore_index=True)
         
-        st.sidebar.success("Kayıt Excel'e işlendi!")
+        # Google Sheets'e gönder
+        conn.update(data=updated_df)
+        st.sidebar.success("Excel'e başarıyla kaydedildi!")
         st.rerun()
 
-# --- 4. VERİLERİ GÖSTER ---
-st.subheader("📋 Güncel Kayıtlar (Google Sheets'ten Canlı)")
+# Listeyi Göster
 try:
-    df = conn.read(spreadsheet=GSHEET_URL)
-    st.dataframe(df, use_container_width=True)
+    data = conn.read()
+    st.subheader("📋 Güncel Hareket Listesi")
+    st.dataframe(data, use_container_width=True, hide_index=True)
 except:
-    st.info("Henüz kayıt bulunamadı veya bağlantı bekleniyor.")
+    st.info("Henüz kayıt bulunmuyor.")
