@@ -2,32 +2,27 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 from datetime import date
-import time
 
-# --- 1. BAĞLANTI (BOŞLUKLARI TEMİZLEYEN ÖZEL YAPI) ---
-URL = "https://rmzfbgaimyuacpovpxm.supabase.co".strip()
-# Senin az önce gönderdiğin gerçek anahtarı buraya tertemiz ekledim
-KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtemZiZ2FpYW15dWFjcG92cHhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3NjMzMjUsImV4cCI6MjA5MDMzOTMyNX0.aZ4pt5km5Ben2YTqENKtrpKoIOTKLMJoGp6NsMtrdxQ".strip()
+# --- 1. BAĞLANTI (LÜTFEN SERVICE_ROLE KEY'İ YAPIŞTIR) ---
+URL = "https://rmzfbgaimyuacpovpxm.supabase.co"
+# Buraya az önce aldığın 'service_role' anahtarını yapıştır
+KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtemZiZ2FpYW15dWFjcG92cHhtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDc2MzMyNSwiZXhwIjoyMDkwMzM5MzI1fQ.uHZuagGk8UxZlzbweufE_z5VaMZH1AoHyFF7gmdAUY4" 
 
-# İstemciyi oluştur
-try:
-    supabase: Client = create_client(URL, KEY)
-except Exception as e:
-    st.error(f"Bağlantı Kurulamadı: {e}")
+# Bağlantıyı kur (Hafızayı temizlemek için cache kullanmıyoruz)
+supabase: Client = create_client(URL, KEY)
 
 st.set_page_config(page_title="Sözcü Takip", layout="wide")
 
-# --- 2. VERİ ÇEKME (HATA DETAYLI) ---
+# --- 2. VERİ ÇEKME ---
+# Cache (hafıza) fonksiyonunu tamamen kaldırdık!
 def verileri_yukle():
     try:
-        # Tablolardan veri çekmeyi dene
-        s_res = supabase.table("kisiler").select("*").execute()
-        p_res = supabase.table("plaka").select("*").execute()
-        k_res = supabase.table("kayitlar").select("*").order("id", desc=True).execute()
-        return s_res.data, p_res.data, k_res.data
+        s = supabase.table("kisiler").select("*").execute()
+        p = supabase.table("plaka").select("*").execute()
+        k = supabase.table("kayitlar").select("*").order("id", desc=True).execute()
+        return s.data, p.data, k.data
     except Exception as e:
-        # Hata varsa ekrana nedenini açıkça yazacak
-        st.warning(f"Bağlantı sağlandı ama veri henüz çekilemiyor. (Hata: {e})")
+        st.error(f"⚠️ Bağlantı Hatası: {e}")
         return [], [], []
 
 s_data, p_data, k_data = verileri_yukle()
@@ -37,36 +32,33 @@ soforler = ["Seçiniz..."] + [str(x['ad_soyad']) for x in s_data]
 plakalar = ["Seçiniz..."] + [str(x['plaka_no']) for x in p_data]
 
 # --- 4. ARAYÜZ ---
-st.title("🚗 Sözcü Ulaştırma Görev Takip")
+st.title("🚗 Sözcü Ulaştırma Takip")
+
+if not s_data:
+    st.warning("Veritabanına ulaşıldı ama şoför listesi boş dönüyor. SQL ile eklediğinden emin ol!")
 
 # Sol Panel
-st.sidebar.header("📝 Yeni Hareket Kaydı")
-s_sofor = st.sidebar.selectbox("Şoför Seçin", soforler)
-s_plaka = st.sidebar.selectbox("Plaka Seçin", plakalar)
+st.sidebar.header("📝 Yeni Kayıt")
+s_sofor = st.sidebar.selectbox("Şoför", soforler)
+s_plaka = st.sidebar.selectbox("Plaka", plakalar)
 s_saat = st.sidebar.time_input("Saat")
-s_km = st.sidebar.text_input("Araç KM")
-s_gorev = st.sidebar.text_area("Görev Tanımı")
+s_km = st.sidebar.text_input("KM")
+s_gorev = st.sidebar.text_area("Görev")
 
 if st.sidebar.button("KAYDET", type="primary", use_container_width=True):
     if s_sofor != "Seçiniz..." and s_gorev.strip():
-        yeni_kayit = {
+        yeni = {
             "tarih": date.today().strftime("%d.%m.%Y"),
-            "sofor": s_sofor,
-            "plaka": s_plaka,
-            "saat": s_saat.strftime("%H:%M"),
-            "km": s_km,
-            "gorev": s_gorev
+            "sofor": s_sofor, "plaka": s_plaka,
+            "saat": s_saat.strftime("%H:%M"), "km": s_km, "gorev": s_gorev
         }
-        supabase.table("kayitlar").insert(yeni_kayit).execute()
-        st.sidebar.success("Kayıt başarıyla eklendi!")
-        time.sleep(1)
+        supabase.table("kayitlar").insert(yeni).execute()
+        st.sidebar.success("Kayıt Başarılı!")
         st.rerun()
 
-# Ana Ekran Tablo
-st.subheader("📋 Güncel Hareket Listesi")
+# Ana Tablo
 if k_data:
-    df = pd.DataFrame(k_data)
-    st.dataframe(df[["tarih", "saat", "sofor", "plaka", "km", "gorev"]], 
+    st.dataframe(pd.DataFrame(k_data)[["tarih", "saat", "sofor", "plaka", "km", "gorev"]], 
                  use_container_width=True, hide_index=True)
 else:
-    st.info("Kayıtlar yükleniyor veya henüz veri girilmemiş...")
+    st.info("Henüz kayıt bulunmuyor.")
