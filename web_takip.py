@@ -5,7 +5,7 @@ from datetime import datetime, time
 
 st.set_page_config(page_title="Sözcü Takip Sistemi", layout="wide")
 
-# Google Sheets Linkin
+# --- KENDİ GOOGLE SHEETS LİNKİNİ BURAYA YAPIŞTIR ---
 URL = "BURAYA_GOOGLE_SHEETS_LINKINI_YAPISTIR"
 
 # Bağlantıyı Kur
@@ -16,7 +16,7 @@ st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
 # --- VERİ OKUMA ---
 def verileri_getir():
     try:
-        # TTL=0 veriyi her seferinde canlı çeker
+        # TTL=0 yaparak verinin her saniye güncel gelmesini sağlıyoruz
         df = conn.read(spreadsheet=URL, ttl=0)
         if df is not None:
             return df.dropna(how='all') # Boş satırları temizle
@@ -27,13 +27,13 @@ def verileri_getir():
 # --- YAN PANEL FORM ---
 st.sidebar.header("📝 Yeni Kayıt")
 s_tarih = st.sidebar.date_input("Tarih", datetime.now())
-s_saat = st.sidebar.time_input("Saat Seçimi", time(12, 00))
+s_saat = st.sidebar.time_input("Saat", time(12, 0))
 s_sofor = st.sidebar.selectbox("Şoför", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
 s_plaka = st.sidebar.selectbox("Plaka", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
 s_km = st.sidebar.text_input("Araç KM")
 s_gorev = st.sidebar.text_area("Görev Tanımı")
 
-if st.sidebar.button("KAYDET", type="primary"):
+if st.sidebar.button("LİSTEYE KAYDET", type="primary"):
     if s_sofor != "Seçiniz..." and s_gorev.strip():
         yeni_kayit = pd.DataFrame([{
             "tarih": s_tarih.strftime("%d.%m.%Y"),
@@ -49,15 +49,21 @@ if st.sidebar.button("KAYDET", type="primary"):
             df_mevcut = verileri_getir()
             son_df = pd.concat([df_mevcut, yeni_kayit], ignore_index=True)
             
-            # Google Sheets'e gönder (200 sonucunu ekrana basma!)
+            # Google Sheets'e gönder
             conn.update(spreadsheet=URL, data=son_df)
             
-            st.sidebar.success("✅ Kayıt Excel'e başarıyla işlendi!")
-            st.rerun() # Sayfayı yenileyerek tabloyu güncelle
+            # 200 mesajını görmezden gel, başarıyı kutla!
+            st.sidebar.success("✅ Kayıt Excel'e Başarıyla İşlendi!")
+            st.rerun() # Tabloyu anında güncellemek için sayfayı yenile
         except Exception as e:
-            st.sidebar.error(f"Kayıt yapılamadı: {e}")
+            # Sadece gerçek hataları göster
+            if "200" not in str(e):
+                st.sidebar.error(f"Bir sorun oluştu: {e}")
+            else:
+                st.sidebar.success("✅ Kayıt Başarıyla İşlendi!")
+                st.rerun()
     else:
-        st.sidebar.error("Lütfen şoför ve görev kısımlarını doldurun!")
+        st.sidebar.error("Lütfen şoför ve görev alanlarını doldurun!")
 
 # --- ANA EKRAN TABLO ---
 st.markdown("### 📋 Güncel Hareket Listesi")
@@ -68,6 +74,7 @@ if not data.empty:
 else:
     st.info("Henüz kayıt bulunmuyor veya veriler yükleniyor...")
 
-# Sayfayı el ile yenileme
+# Sayfayı el ile yenileme butonu
 if st.button("🔄 Listeyi Tazele"):
+    st.cache_data.clear()
     st.rerun()
