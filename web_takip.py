@@ -8,27 +8,34 @@ import uuid
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Sözcü Takip | Özgür Özbay", layout="wide", page_icon="🚗")
 
-# --- RESİM LİNKİ (SİZİN GÖNDERDİĞİNİZ) ---
+# --- RESİM LİNKİ ---
 LOGO_URL = "https://i.ibb.co/gZLkm4KF/channels4-profile.jpg"
 
-# --- 0. LOGIN SİSTEMİ ---
+# --- 0. LOGIN SİSTEMİ (ÇOKLU KULLANICI) ---
 def login():
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
+    if "user_name" not in st.session_state:
+        st.session_state.user_name = ""
 
     if not st.session_state.logged_in:
         col1, col2, col3 = st.columns([1,1,1])
         with col2:
-            # Giriş ekranında logonuz
             st.image(LOGO_URL, width=150)
-            st.title("Sözcü Tv Ulaştırma Bilgi Paneli")
-            user = st.text_input("Kullanıcı Adı")
-            password = st.text_input("Şifre", type="password")
+            st.title("Sistem Girişi")
+            user_input = st.text_input("Kullanıcı Adı")
+            pass_input = st.text_input("Şifre", type="password")
+            
+            # --- KULLANICI LİSTESİ BURASI ---
+            users = {
+                "Akif": "12345",      # 1. Kullanıcı (Siz)
+                "Yeliz": "12345"     # 2. Kullanıcı (Ekip/Şoför)
+            }
             
             if st.button("Giriş Yap", use_container_width=True):
-                # Kullanıcı: ozgur | Şifre: sozcu2024
-                if user == "Yeliz" and password == "12345":
+                if user_input in users and users[user_input] == pass_input:
                     st.session_state.logged_in = True
+                    st.session_state.user_name = user_input.capitalize()
                     st.rerun()
                 else:
                     st.error("Kullanıcı adı veya şifre hatalı!")
@@ -70,30 +77,32 @@ if login():
         st.error("⚠️ Excel formatı hatalı! A1 hücresine 'id' yazmayı unutmayın.")
         st.stop()
 
-    # --- 3. ÜST PANEL (YENİ LOGO VE BAŞLIK) ---
+    # --- 3. ÜST PANEL ---
     col_logo, col_title, col_admin = st.columns([0.8, 4, 1.5])
     
     with col_logo:
-        # Ana sayfada logonuz
         st.image(LOGO_URL, width=80)
 
     with col_title:
         st.markdown("<h1 style='margin-top: 5px;'>Ulaştırma Hareket Takip Arşivi</h1>", unsafe_allow_html=True)
 
     with col_admin:
+        # Giriş yapan kullanıcının adını burada gösteriyoruz
         st.markdown(f"""
             <div style="background-color:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #dee2e6; text-align:center;">
-                <b style="color:#212529; font-size:15px;">Özgür Özbay</b><br>
-                <span style="font-size:12px; color:#6c757d;">Sistem Yöneticisi</span>
+                <b style="color:#212529; font-size:15px;">{st.session_state.user_name}</b><br>
+                <span style="font-size:12px; color:#6c757d;">Aktif Oturum</span>
             </div>
         """, unsafe_allow_html=True)
         if st.button("🚪 Güvenli Çıkış", use_container_width=True):
             st.session_state.logged_in = False
+            st.session_state.user_name = ""
             st.rerun()
 
     st.markdown("---")
 
-    # --- 4. YAN PANEL (KAYIT) ---
+    # --- 4. YAN PANEL ---
+    st.sidebar.markdown(f"### 👤 Kullanıcı: {st.session_state.user_name}")
     st.sidebar.header("📝 Yeni Kayıt")
     with st.sidebar.form("yeni_form", clear_on_submit=True):
         s_tarih = st.date_input("Tarih", datetime.now())
@@ -114,7 +123,7 @@ if login():
             st.cache_data.clear()
             st.rerun()
 
-    # --- 5. ANA EKRAN (ARŞİV) ---
+    # --- 5. ANA EKRAN & YÖNETİM ---
     if not df.empty and "id" in df.columns:
         st.markdown("### 🔍 Arşiv Sorgulama")
         c1, c2, c3, c4 = st.columns(4)
@@ -131,7 +140,7 @@ if login():
 
         st.dataframe(f_df, use_container_width=True, hide_index=True)
 
-        # --- SİLME / DÜZENLEME ---
+        # Düzenleme paneli (ID seçimi ile)
         st.markdown("---")
         with st.expander("🛠️ Kayıt Düzenleme ve Silme Paneli"):
             secilen_id = st.selectbox("İşlem için ID seçin:", ["Seçiniz..."] + f_df["id"].tolist())
@@ -151,7 +160,6 @@ if login():
                             st.cache_data.clear()
                             st.rerun()
                     with col_del:
-                        st.warning("⚠️ Silme geri alınamaz!")
                         if st.button("🗑️ KAYDI SİL"):
                             sheet_kayitlar.delete_rows(int(kayit_index))
                             st.success("Silindi!")
@@ -160,4 +168,4 @@ if login():
     else:
         st.info("Kayıtlar listeleniyor...")
 
-    st.markdown(f"<div style='text-align: center; color: grey; font-size: 10px; margin-top: 50px;'>© {datetime.now().year} Sözcü Ulaştırma | Özgür Özbay</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: center; color: grey; font-size: 10px; margin-top: 50px;'>© {datetime.now().year} Sözcü Ulaştırma | Geliştirici: Özgür Özbay</div>", unsafe_allow_html=True)
