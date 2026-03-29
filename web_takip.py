@@ -13,7 +13,7 @@ supabase: Client = create_client(URL, KEY)
 st.set_page_config(page_title="Sözcü Ulaştırma", layout="wide")
 
 # --- VERİ ÇEKME FONKSİYONU ---
-@st.cache_data(ttl=0) # Verileri her dakika tazelemesi için
+
 def listeleri_getir():
     soforler, plakalar = ["Seçiniz..."], ["Seçiniz..."]
     try:
