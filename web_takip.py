@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
-from datetime import date
+from datetime import datetime
 
 st.set_page_config(page_title="Sözcü Takip Sistemi", layout="wide")
 
-# --- KENDİ LİNKİNİ BURAYA YAPIŞTIR ---
+# --- BURAYA KENDİ GOOGLE SHEETS LİNKİNİ YAPIŞTIR ---
 URL = "BURAYA_GOOGLE_SHEETS_LINKINI_YAPISTIR"
 
 # Bağlantıyı Kur
@@ -13,57 +13,61 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 st.title("🚗 Sözcü Ulaştırma Hareket Takibi")
 
-# Yan Panel Formu
-st.sidebar.header("📝 Yeni Hareket Kaydı")
-soforler = ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"]
-plakalar = ["Seçiniz...", "34 ABC 123", "06 XYZ 789"]
+# --- VERİ OKUMA FONKSİYONU ---
+def verileri_getir():
+    try:
+        # Veriyi çek, eğer boşsa veya hata verirse boş bir tablo oluştur
+        df = conn.read(spreadsheet=URL, ttl="10s")
+        if df is None or df.empty:
+            return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
+        return df
+    except:
+        return pd.DataFrame(columns=["tarih", "saat", "sofor", "plaka", "km", "gorev"])
 
-s_sofor = st.sidebar.selectbox("Şoför Seçin", soforler)
-s_plaka = st.sidebar.selectbox("Plaka Seçin", plakalar)
+df_mevcut = verileri_getir()
+
+# --- YAN PANEL FORM ---
+st.sidebar.header("📝 Yeni Kayıt")
+s_sofor = st.sidebar.selectbox("Şoför", ["Seçiniz...", "Celal Aslan", "Erkan", "Murat", "Mehmet"])
+s_plaka = st.sidebar.selectbox("Plaka", ["Seçiniz...", "34 ABC 123", "06 XYZ 789"])
 s_km = st.sidebar.text_input("Araç KM")
 s_gorev = st.sidebar.text_area("Görev Tanımı")
 
-if st.sidebar.button("KAYDET"):
+if st.sidebar.button("KAYDET", type="primary"):
     if s_sofor != "Seçiniz..." and s_gorev.strip():
-        yeni_veri = pd.DataFrame([{
-            "tarih": date.today().strftime("%d.%m.%Y"),
+        # Yeni satır (Excel'deki sütunlarla birebir aynı sırada)
+        yeni_kayit = pd.DataFrame([{
+            "tarih": datetime.now().strftime("%d.%m.%Y"),
+            "saat": datetime.now().strftime("%H:%M"),
             "sofor": s_sofor,
             "plaka": s_plaka,
             "km": s_km,
             "gorev": s_gorev
         }])
         
+        # Mevcut verinin altına ekle ve Excel'i güncelle
         try:
-            # TTL=0 ekleyerek hafızayı zorla tazeliyoruz
-            df = conn.read(spreadsheet=URL, ttl=0)
-            if df is not None and not df.empty:
-                updated_df = pd.concat([df, yeni_veri], ignore_index=True)
-            else:
-                updated_df = yeni_veri
-            
-            conn.update(spreadsheet=URL, data=updated_df)
+            # Önce güncel hali çek
+            guncel_df = verileri_getir()
+            # Yeni veriyi ekle
+            son_df = pd.concat([guncel_df, yeni_kayit], ignore_index=True)
+            # Excel'e yaz
+            conn.update(spreadsheet=URL, data=son_df)
             st.sidebar.success("Kayıt Excel'e işlendi!")
-            st.cache_data.clear() # Önbelleği temizle
             st.rerun()
         except Exception as e:
-            st.sidebar.error(f"Kayıt sırasında hata: {e}")
+            st.sidebar.error(f"Hata oluştu: {e}")
     else:
-        st.sidebar.error("Lütfen tüm alanları doldurun!")
+        st.sidebar.error("Lütfen alanları doldurun!")
 
-# --- VERİLERİ GÖRÜNTÜLEME (GÜVENLİ MOD) ---
+# --- TABLO GÖRÜNTÜLEME ---
 st.markdown("### 📋 Güncel Hareket Listesi")
+if not df_mevcut.empty:
+    # Tabloyu göster
+    st.dataframe(df_mevcut, use_container_width=True, hide_index=True)
+else:
+    st.info("Henüz kayıt bulunmuyor. İlk kaydı sol taraftan ekleyebilirsiniz.")
 
-try:
-    # TTL=0 verinin anında görünmesini sağlar
-    data = conn.read(spreadsheet=URL, ttl=0)
-    
-    if data is not None and not data.empty:
-        # Tabloyu gösterirken hatalı satırları (boş olanları) temizle
-        data = data.dropna(how='all')
-        st.dataframe(data, use_container_width=True, hide_index=True)
-    else:
-        st.info("Henüz kayıt bulunmuyor. İlk kaydı sol taraftan girebilirsiniz.")
-except Exception as e:
-    # Eğer o NoneType hatası tekrar ederse site çökmeyecek, bu mesajı verecek
-    st.warning("Veriler şu an yüklenemiyor, lütfen bir saniye sonra sayfayı yenileyin.")
-    # Teknik detay görmek istersen: st.write(e)
+# Sayfayı el ile yenileme butonu
+if st.button("Listeyi Güncelle"):
+    st.rerun()
