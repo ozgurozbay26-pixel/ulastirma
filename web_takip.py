@@ -1,261 +1,91 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
-import os
+from supabase import create_client, Client
 from datetime import date
 
-# --- 1. DOSYA YOLU VE AYARLAR ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-db_yolu = os.path.join(BASE_DIR, 'kisiler.db')
+# --- SUPABASE BAĞLANTI AYARLARI ---
+URL = "https://rmzfbgaimyuacpovpxm.supabase.co"
+KEY = "sb_publishable_AIPebE5Fs4zSKM36R9VUMQ_yuS8Ih-h" # Senin kopyaladığın anahtar
 
-# Sayfa Ayarları (Web tarayıcısı sekmesinde görünür)
-st.set_page_config(page_title="Sözcü Ulaştırma Web", layout="wide")
+supabase: Client = create_client(URL, KEY)
 
-# --- 2. SESSION STATE (Oturum Hafızası) AYARLARI ---
-# Araçların Müsait/Dolu durumunu ve plakalarını aklında tutması için hafıza oluşturuyoruz
+# Sayfa Ayarları
+st.set_page_config(page_title="Sözcü Ulaştırma Bulut", layout="wide")
+
+# --- HAFIZA (Araç Durumları) ---
 if 'arac_durumu' not in st.session_state:
-    st.session_state['arac_durumu'] = {i: True for i in range(1, 9)} # True = Müsait, False = Görevde
+    st.session_state['arac_durumu'] = {i: True for i in range(1, 9)}
 
-# Tıklayınca durumu tersine çeviren fonksiyon (Müsait <-> Görevde)
 def durum_degistir(arac_id):
     st.session_state['arac_durumu'][arac_id] = not st.session_state['arac_durumu'][arac_id]
 
-# --- 3. VERİTABANI FONKSİYONLARI ---
-def veritabani_hazirla():
-    # Eğer tablo yoksa hata vermemesi için otomatik oluştururuz
-    conn = sqlite3.connect(db_yolu)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS kayitlar (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tarih TEXT,
-            sofor TEXT NOT NULL,
-            plaka TEXT,
-            saat TEXT,
-            km TEXT,
-            gorev TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-# Sayfa her yüklendiğinde veritabanı hazır mı diye kontrol eder
-veritabani_hazirla()
-
-def verileri_yukle():
-    try:
-        # Burada direkt yukarıda tanımladığımız 'db_yolu'nu kullanıyoruz
-        conn = sqlite3.connect(db_yolu)
-        # Verileri id'ye göre tersten sıralayarak çekeriz (En yeni en üstte)
-        df = pd.read_sql_query("SELECT * FROM kayitlar ORDER BY id DESC", conn)
-        conn.close()
-        return df
-    except:
-        return pd.DataFrame()
-
+# --- VERİ ÇEKME FONKSİYONLARI ---
 def listeleri_getir():
-    # Açılır menüler (ComboBox) için şoför ve plaka listelerini hazırlar
-    soforler = ["Seçiniz..."]
-    plakalar = ["Seçiniz..."]
+    soforler, plakalar = ["Seçiniz..."], ["Seçiniz..."]
     try:
-        conn = sqlite3.connect(db_yolu)
-        c = conn.cursor()
-        
-        # 'kisiler' tablosundan şoförleri çek (Eğer bu tablo veritabanında varsa)
-        c.execute("SELECT ad_soyad FROM kisiler ORDER BY ad_soyad ASC")
-        soforler += [row[0] for row in c.fetchall()]
-        
-        # 'plaka' tablosundan plakaları çek (Eğer bu tablo veritabanında varsa)
-        c.execute("SELECT plaka_no FROM plaka ORDER BY plaka_no ASC")
-        plakalar += [row[0] for row in c.fetchall()]
-        
-        conn.close()
-    except:
-        # Eğer tablolar henüz yoksa hata vermemesi için varsayılan bırakır
-        pass
+        # Buluttan verileri çekiyoruz
+        s_res = supabase.table("kisiler").select("ad_soyad").execute()
+        soforler += [x['ad_soyad'] for x in s_res.data]
+        p_res = supabase.table("plaka").select("plaka_no").execute()
+        plakalar += [x['plaka_no'] for x in p_res.data]
+    except: pass
     return soforler, plakalar
 
-# YENİ: Sadece seçili plakaya ait son görevi getiren fonksiyon (Tooltip için)
-def araca_ait_son_gorevi_getir(secili_plaka):
+def son_gorev_oku(p):
     try:
-        conn = sqlite3.connect(db_yolu)
-        c = conn.cursor()
-        # Plakaya göre filtreleyip en son kaydı (id DESC) getiriyoruz
-        c.execute("SELECT sofor, gorev FROM kayitlar WHERE plaka=? ORDER BY id DESC LIMIT 1", (secili_plaka,))
-        son_kayit = c.fetchone()
-        conn.close()
-        
-        if son_kayit:
-            return f"Şoför: {son_kayit[0]}\nSon Görev: {son_kayit[1]}"
-        return "Bu araca ait henüz görev girilmemiş."
-    except:
-        return "Bilgi alınamadı."
+        res = supabase.table("kayitlar").select("sofor, gorev").eq("plaka", p).order("id", desc=True).limit(1).execute()
+        if res.data: return f"Şoför: {res.data[0]['sofor']}\nGörev: {res.data[0]['gorev']}"
+    except: pass
+    return "Görev bilgisi yok."
 
-# Listeleri bir kez sayfa başında yükleriz
 sofor_listesi, plaka_listesi = listeleri_getir()
 
-# --- 4. SOL PANEL (YENİ KAYIT FORMU) ---
+# --- FORM BÖLÜMÜ ---
 st.sidebar.header("📝 Yeni Görev Kaydı")
-
-# COMBOBOX'LAR (st.selectbox)
 s_sofor = st.sidebar.selectbox("Şoför Seçin (*)", sofor_listesi)
 s_plaka = st.sidebar.selectbox("Plaka Seçin", plaka_listesi)
-
-# Diğer Girişler
 s_saat = st.sidebar.time_input("Saat Seçin")
-s_km = st.sidebar.text_input("Araç KM", placeholder="Örn: 154000")
-s_gorev = st.sidebar.text_area("Geniş Görev (*)")
+s_km = st.sidebar.text_input("Araç KM")
+s_gorev = st.sidebar.text_area("Görev Detayı (*)")
 
-# Kaydet Butonu
-kaydet = st.sidebar.button("Kaydet", use_container_width=True, type="primary")
-
-if kaydet:
+if st.sidebar.button("Kaydet", use_container_width=True, type="primary"):
     if s_sofor != "Seçiniz..." and s_gorev.strip():
-        try:
-            conn = sqlite3.connect(db_yolu)
-            c = conn.cursor()
-            tarih_str = date.today().strftime("%d.%m.%Y")
-            saat_str = s_saat.strftime("%H:%M")
-            
-            c.execute("INSERT INTO kayitlar (tarih, sofor, plaka, saat, km, gorev) VALUES (?, ?, ?, ?, ?, ?)",
-                      (tarih_str, s_sofor, s_plaka, saat_str, s_km, s_gorev))
-            conn.commit()
-            conn.close()
-            st.sidebar.success(f"Kayıt Başarılı: {s_sofor}")
-            
-            # Sayfayı yenileyerek yeni kaydın hemen tabloda görünmesini sağlarız
-            try: st.rerun()
-            except: st.experimental_rerun()
-            
-        except Exception as e:
-            st.sidebar.error(f"Hata oluştu: {e}")
-    else:
-        st.sidebar.warning("Lütfen şoför seçin ve görev detayını yazın!")
+        yeni_veri = {
+            "tarih": date.today().strftime("%d.%m.%Y"),
+            "sofor": s_sofor, "plaka": s_plaka,
+            "saat": s_saat.strftime("%H:%M"), "km": s_km, "gorev": s_gorev
+        }
+        supabase.table("kayitlar").insert(yeni_veri).execute()
+        st.sidebar.success("Bulut Veritabanına Kaydedildi!")
+        st.rerun()
+    else: st.sidebar.warning("Lütfen zorunlu alanları doldurun!")
 
-# --- 5. ANA PANEL (FİLTRELER VE TABLO) ---
-st.title("🚗 Sözcü Ulaştırma Takip Paneli")
-
-# Verileri Çek
-df = verileri_yukle()
-
-# FİLTRELEME BÖLÜMÜ
-st.subheader("🔍 Filtreleme")
-f_col1, f_col2, f_col3 = st.columns(3)
+# --- ANA EKRAN ---
+st.title("🚗 Sözcü Ulaştırma (Bulut Sistemi)")
+res = supabase.table("kayitlar").select("*").order("id", desc=True).execute()
+df = pd.DataFrame(res.data)
 
 if not df.empty:
-    with f_col1:
-        f_sofor = st.selectbox("Şoföre Göre", ["Tümü"] + list(df['sofor'].unique()))
-    with f_col2:
-        f_plaka = st.selectbox("Plakaya Göre", ["Tümü"] + list(df['plaka'].unique()))
-    with f_col3:
-        f_tarih = st.selectbox("Tarihe Göre", ["Tümü"] + list(df['tarih'].unique()))
-
-    # Seçilen Filtreleri Dataframe'e Uygula
-    if f_sofor != "Tümü":
-        df = df[df['sofor'] == f_sofor]
-    if f_plaka != "Tümü":
-        df = df[df['plaka'] == f_plaka]
-    if f_tarih != "Tümü":
-        df = df[df['tarih'] == f_tarih]
-
-st.divider()
-
-# TABLO BAŞLIĞI VE EXCEL İNDİRME YAN YANA
-col_baslik, col_indir = st.columns([3, 1])
-with col_baslik:
     st.subheader(f"📋 Kayıtlar (Toplam: {len(df)})")
-with col_indir:
-    if not df.empty:
-        # utf-8-sig ile Türkçe karakter desteği sağlanır
-        csv_verisi = df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 Excel İndir",
-            data=csv_verisi,
-            file_name=f'Rapor_{date.today().strftime("%d_%m_%Y")}.csv',
-            mime='text/csv',
-            use_container_width=True
-        )
-
-# TABLO GÖSTERİMİ VE SİLME
-if not df.empty:
-    # use_container_width=True ile tabloyu tüm genişliğe yayarız
-    # hide_index=True ile baştaki gereksiz sıra numaralarını gizliyoruz
     st.dataframe(df, use_container_width=True, hide_index=True)
     
-    # SİLME BÖLÜMÜ
-    st.divider()
-    st.subheader("🗑️ Kayıt Silme")
-    s_col1, s_col2 = st.columns([1, 4])
-    with s_col1:
-        # Sadece o an filtrelenmiş tabloda görünen ID'leri silmeye izin ver
-        silinecek_id = st.selectbox("Silinecek Kayıt ID'sini Seçin", df['id'].tolist())
-    with s_col2:
-        st.write("") # Butonu hizalamak için boşluk
-        st.write("") 
-        if st.button("Seçili Kaydı Sil", type="secondary"):
-            try:
-                conn = sqlite3.connect(db_yolu)
-                c = conn.cursor()
-                c.execute("DELETE FROM kayitlar WHERE id=?", (silinecek_id,))
-                conn.commit()
-                conn.close()
-                st.warning(f"ID {silinecek_id} başarıyla silindi!")
-                try: st.rerun()
-                except: st.experimental_rerun()
-            except Exception as e:
-                st.error(f"Silme işlemi başarısız: {e}")
+    if st.button("En Son Kaydı Sil"):
+        supabase.table("kayitlar").delete().eq("id", df.iloc[0]['id']).execute()
+        st.rerun()
 else:
-    st.info("Bu filtrelere uygun veya gösterilecek herhangi bir kayıt bulunamadı.")
+    st.info("Henüz kayıt bulunamadı. Lütfen formdan yeni bir görev ekleyin.")
 
-# ==========================================
-# --- 6. ARAÇ DURUM PANELİ (Küçültülmüş ve Gerçek Plakalı) ---
-# ==========================================
+# --- ARAÇ PANELİ ---
 st.divider()
 st.subheader("🚙 Araç Durum Paneli")
-st.caption("Araçların üzerine tıklayarak Müsait/Görevde durumlarını değiştirebilir, farenizi üzerinde bekleterek o plakaya ait son görevi görebilirsiniz.")
+cols = st.columns(4)
+gercek_plakalar = plaka_listesi[1:] # "Seçiniz"i atla
 
-# 8 araç için 2 satır, 4 sütunlu ızgara
-cols_ust = st.columns(4)
-cols_alt = st.columns(4)
-tum_sutunlar = cols_ust + cols_alt
-
-# Sadece gerçek plakaları al (İlk baştaki "Seçiniz..." ibaresini atlıyoruz)
-gercek_plakalar = plaka_listesi[1:] if len(plaka_listesi) > 1 else []
-
-# 8 Araç Slotunu dolduruyoruz
 for i in range(1, 9):
-    col = tum_sutunlar[i - 1]
-    
-    # 8 Slota sığdıracak şekilde plakaları yerleştir (Plaka yetmezse "Araç X" yazar)
-    if (i - 1) < len(gercek_plakalar):
-        gosterilecek_plaka = gercek_plakalar[i - 1]
-    else:
-        gosterilecek_plaka = f"Araç {i}"
-
-    musait_mi = st.session_state['arac_durumu'][i]
-    durum_yazisi = "🟢 Müsait" if musait_mi else "🔴 Görevde"
-    
-    # YENİ: Tooltip bilgisini seçili plakaya özel getiriyoruz (Sadece 'Görevde' ise)
-    hover_bilgisi = araca_ait_son_gorevi_getir(gosterilecek_plaka) if not musait_mi else "Araç şu an müsait."
-    
+    col = cols[(i-1)%4]
+    p_adi = gercek_plakalar[i-1] if (i-1) < len(gercek_plakalar) else f"Araç {i}"
+    durum = st.session_state['arac_durumu'][i]
     with col:
-        # Resmi klasörde bulursa gösterir, bulamazsa emoji gösterir
-        resim_yolu = os.path.join(BASE_DIR, "car.png")
-        if os.path.exists(resim_yolu):
-            # *** DEĞİŞİKLİK BURADA: 'width=100' ekleyerek resimleri küçülttük ***
-            # Önceki kodda: st.image(resim_yolu, use_container_width=True) idi.
-            st.image(resim_yolu, width=100)
-        else:
-            # Resim yoksa emoji göster, onu da küçültelim (style tagı ile)
-            st.markdown("<h3 style='text-align: center;'>🚗</h3>", unsafe_allow_html=True)
-            
-        # Resmin hemen altına tıklanabilir butonu koy
-        # help="..." kısmı, farenin ucuyla butonun üstünde durunca açılan kutucuktur (Tooltip)!
-        st.button(
-            label=f"{gosterilecek_plaka} \n {durum_yazisi}", # Buton isminde direkt plaka yazar
-            key=f"arac_btn_{i}",
-            help=hover_bilgisi,
-            on_click=durum_degistir,
-            args=(i,), # Hangi araca tıklandığını fonksiyona gönderir
-            use_container_width=True
-        )
+        st.button(f"{p_adi}\n{'🟢 Müsait' if durum else '🔴 Görevde'}", 
+                  key=f"arac_{i}", on_click=durum_degistir, args=(i,),
+                  help=son_gorev_oku(p_adi), use_container_width=True)
